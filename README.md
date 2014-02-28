@@ -15,7 +15,7 @@ Create an input file called `demo.md` with the following text:
 
 Install diagrams-pandoc, then run pandoc as follows:
 
-``` bash
+``` shell
     pandoc -t html demo.md --filter diagrams-pandoc -o demo.html -s
 ```
 
@@ -27,7 +27,7 @@ The file demo.html should now have an img tag pointing at a PNG of a circle.
 and includes the resulting images in the pandoc markup.  It is meant
 to be run as a
 [pandoc filter](http://johnmacfarlane.net/pandoc/scripting.html) as
-shown below.
+shown above.
 
 `diagrams-pandoc` is aware of two code block classes.  A block with
 the `diagram` class will be replaced by the resulting image---the code
@@ -37,12 +37,16 @@ block.  The input block is replaced by image appears before the code
 block, and the `diagram-haskell` class is replaced by the `haskell`
 class, so that pandoc can perform syntax highlighting as usual.
 
+I have only tested with pandoc's markdown reader.  In particular, the
+rst reader doesn't seem to currently support adding classes to code
+blocks.
+
 ## Installing
 
 `diagrams-pandoc` is not yet on Hackage.  To install, clone this
 repository, and install with cabal.
 
-``` bash
+``` shell
     git clone https://github.com/bergey/diagrams-pandoc.git
     cd diagrams-pandoc
     cabal install
@@ -54,3 +58,4 @@ repository, and install with cabal.
 * for formats which are more human-readable (eg, markdown, rst), leave
   code block alone?
 * provide command-line flags to override default behavior
+
