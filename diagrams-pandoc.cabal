@@ -19,12 +19,12 @@ executable diagrams-pandoc
   main-is:             Main.hs
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >= 4.6 && < 4.7,
+  build-depends:       base >= 4.6 && < 4.8,
                        pandoc-types >= 1.12 && < 1.13,
-                       diagrams-lib >= 1.0 && < 1.2,
+                       diagrams-lib >= 1.0 && < 1.3,
                        vector-space >= 0.8,
-                       diagrams-builder >= 0.5 && < 0.6,
-                       diagrams-cairo >= 1.0 && < 1.2,
+                       diagrams-builder >= 0.5 && < 0.7,
+                       diagrams-cairo >= 1.0 && < 1.3,
                        directory >= 1.2 && < 1.3,
                        filepath >= 1.3 && < 1.4
   -- hs-source-dirs:      
