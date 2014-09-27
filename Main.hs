@@ -1,5 +1,4 @@
-import           System.FilePath                    (joinPath, splitPath, (<.>),
-                                                     (</>))
+import           System.FilePath                    ((<.>), (</>))
 import           System.IO
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
@@ -15,13 +14,11 @@ import Control.Applicative
 import Data.List (delete)
 
 -- TODO choose output format based on pandoc target
+backendExt :: String
 backendExt = "png"
 
 main :: IO ()
 main = toJSONFilter $ insertDiagrams "images"
-
-dropDiagrams (CodeBlock (_,["diagram"],_) code) = []
-dropDiagrams block = [block]
 
 insertDiagrams :: FilePath -> Block -> IO [Block]
 insertDiagrams outDir (CodeBlock (ident, classes, attrs) code)
