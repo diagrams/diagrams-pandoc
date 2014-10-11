@@ -6,7 +6,7 @@ import           Control.Monad                      (when)
 import qualified Diagrams.Builder                   as DB
 import           System.Directory                   (createDirectory,
                                                      doesDirectoryExist)
-import           Data.VectorSpace                   (zeroV)
+import Linear (zero)
 import Text.Pandoc.JSON
 import           Diagrams.TwoD.Size                 (SizeSpec2D (Dims))
 import           Diagrams.Prelude                   (centerXY, pad, (&), (.~))
@@ -46,7 +46,7 @@ compileDiagram outDir src = do
 
                 Cairo
 
-                zeroV
+                zero
 
                 (CairoOptions "default.png" (Dims 500 200) PNG False)
 
