@@ -1,4 +1,4 @@
-import           System.FilePath                    ((<.>), (</>))
+import           System.FilePath                    ((<.>), (</>), FilePath)
 import           System.IO
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
@@ -9,24 +9,28 @@ import           System.Directory                   (createDirectory,
 import Linear (zero)
 import Text.Pandoc.JSON
 import           Diagrams.TwoD.Size                 (SizeSpec2D (Dims))
-import           Diagrams.Prelude                   (centerXY, pad, (&), (.~))
+import           Diagrams.Prelude                   (centerXY, pad, (&), (.~), R2)
 import Control.Applicative
 import Data.List (delete)
+import Options.Applicative
+import Options.Applicative.Builder
 
 -- TODO choose output format based on pandoc target
 backendExt :: String
 backendExt = "png"
 
 main :: IO ()
-main = toJSONFilter $ insertDiagrams "images"
+main = do
+    opts <- execParser withHelp
+    toJSONFilter $ insertDiagrams opts
 
-insertDiagrams :: FilePath -> Block -> IO [Block]
-insertDiagrams outDir (CodeBlock (ident, classes, attrs) code)
+insertDiagrams :: Opts -> Block -> IO [Block]
+insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
     | "diagram-haskell" `elem` classes = (++ [bl']) <$> img
     | "diagram" `elem` classes = img
   where
     img = do
-        d <- compileDiagram outDir code
+        d <- compileDiagram opts code
         return $ case d of
             Left _err     -> []
             Right imgName -> [Plain [Image [] (imgName,"")]] -- no alt text, no title
@@ -38,11 +42,13 @@ insertDiagrams _ block = return [block]
 -- TODO clean this up, move it into -builder somehow
 -- | Compile the literate source code of a diagram to a .png file with
 --   a file name given by a hash of the source code contents
-compileDiagram :: FilePath -> String -> IO (Either String String)
-compileDiagram outDir src = do
-  ensureDir outDir
+compileDiagram :: Opts -> String -> IO (Either String String)
+compileDiagram opts src = do
+  ensureDir $ _outDir opts
 
-  let bopts = DB.mkBuildOpts
+  let
+      bopts :: DB.BuildOpts Cairo R2
+      bopts = DB.mkBuildOpts
 
                 Cairo
 
@@ -61,12 +67,12 @@ compileDiagram outDir src = do
                   , "Data.Typeable"
                   ]
                 & DB.pragmas .~ ["DeriveDataTypeable"]
-                & DB.diaExpr .~ "example"
+                & DB.diaExpr .~ _expression opts
                 & DB.postProcess .~ (pad 1.1 . centerXY)
                 & DB.decideRegen .~
                   (DB.hashedRegenerate
                     (\hash opts -> opts { _cairoFileName = mkFile hash })
-                    outDir
+                    (_outDir opts)
                   )
 
   res <- DB.buildDiagram bopts
@@ -94,7 +100,27 @@ compileDiagram outDir src = do
       return $ Right (mkFile (DB.hashToHexStr hash))
 
  where
-  mkFile base = outDir </> base <.> backendExt
+  mkFile base = _outDir opts </> base <.> backendExt
   ensureDir dir = do
     b <- doesDirectoryExist dir
     when (not b) $ createDirectory dir
+
+data Opts = Opts {
+    _outDir :: FilePath,
+    _expression :: String
+    }
+
+optsParser :: Parser Opts
+optsParser = Opts
+             <$> strOption (long "out" <> short 'o' <> metavar "DIR"
+                            <> help "Directory for image files" <> value "images")
+             <*> strOption (long "expression" <> long "expr" <> short 'e' <>
+                            metavar "NAME" <>
+                            help "name of Diagram value in Haskell snippet" <>
+                            value "example")
+
+withHelp :: ParserInfo Opts
+withHelp = info
+       (helper <*> optsParser)
+       (fullDesc <> progDesc "interpret inline Haskell code to images in Pandoc output\nhttps://github.com/bergey/diagrams-pandoc"
+       <> header "diagrams-pandoc - a Pandoc filter for inline Diagrams")

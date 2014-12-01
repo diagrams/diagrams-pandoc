@@ -58,4 +58,4 @@ repository, and install with cabal.
 * for formats which are more human-readable (eg, markdown, rst), leave
   code block alone?
 * provide command-line flags to override default behavior
-
+* add Backends besides Cairo
