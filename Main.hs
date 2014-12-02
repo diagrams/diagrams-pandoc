@@ -1,19 +1,19 @@
-import           System.FilePath                    ((<.>), (</>), FilePath)
-import           System.IO
+import           Control.Applicative
+import           Control.Monad (when)
+import           Data.List (delete)
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
-import           Control.Monad                      (when)
-import qualified Diagrams.Builder                   as DB
+import qualified Diagrams.Builder as DB
+import           Diagrams.Prelude (centerXY, pad, (&), (.~), R2)
+import           Diagrams.Size (dims)
+import           Linear (V2(..), zero)
+import           Options.Applicative
+import           Options.Applicative.Builder
 import           System.Directory                   (createDirectory,
                                                      doesDirectoryExist)
-import Linear (zero)
-import Text.Pandoc.JSON
-import           Diagrams.TwoD.Size                 (SizeSpec2D (Dims))
-import           Diagrams.Prelude                   (centerXY, pad, (&), (.~), R2)
-import Control.Applicative
-import Data.List (delete)
-import Options.Applicative
-import Options.Applicative.Builder
+import           System.FilePath ((<.>), (</>), FilePath)
+import           System.IO
+import           Text.Pandoc.JSON
 
 -- TODO choose output format based on pandoc target
 backendExt :: String
@@ -47,14 +47,14 @@ compileDiagram opts src = do
   ensureDir $ _outDir opts
 
   let
-      bopts :: DB.BuildOpts Cairo R2
+      bopts :: DB.BuildOpts Cairo V2 Double
       bopts = DB.mkBuildOpts
 
                 Cairo
 
                 zero
 
-                (CairoOptions "default.png" (Dims 500 200) PNG False)
+                (CairoOptions "default.png" (dims $ V2 500 200) PNG False)
 
                 & DB.snippets .~ [src]
                 & DB.imports  .~
