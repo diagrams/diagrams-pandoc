@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/bergey/diagrams-pandoc.svg?branch=master)](https://travis-ci.org/bergey/diagrams-pandoc)
+
 A [pandoc](http://johnmacfarlane.net/pandoc/) filter to express
 diagrams inline using the haskell EDSL
 [diagrams](http://projects.haskell.org/diagrams/).
