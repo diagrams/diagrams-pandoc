@@ -4,14 +4,13 @@ import           Data.List (delete)
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
 import qualified Diagrams.Builder as DB
-import           Diagrams.Prelude (centerXY, pad, (&), (.~), R2)
+import           Diagrams.Prelude (centerXY, pad, (&), (.~))
 import           Diagrams.Size (dims)
 import           Linear (V2(..), zero)
 import           Options.Applicative
-import           Options.Applicative.Builder
 import           System.Directory                   (createDirectory,
                                                      doesDirectoryExist)
-import           System.FilePath ((<.>), (</>), FilePath)
+import           System.FilePath ((<.>), (</>))
 import           System.IO
 import           Text.Pandoc.JSON
 
@@ -71,7 +70,7 @@ compileDiagram opts src = do
                 & DB.postProcess .~ (pad 1.1 . centerXY)
                 & DB.decideRegen .~
                   (DB.hashedRegenerate
-                    (\hash opts -> opts { _cairoFileName = mkFile hash })
+                    (\hash opts' -> opts' { _cairoFileName = mkFile hash })
                     (_outDir opts)
                   )
 
