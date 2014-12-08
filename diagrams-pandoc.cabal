@@ -5,11 +5,11 @@ name:                diagrams-pandoc
 version:             0.1
 synopsis:            A pandoc filter to express diagrams inline using the haskell EDSL _diagrams_
 -- description:         
-license:             BSD3
+license:             GPL
 license-file:        LICENSE
 author:              Daniel Bergey
 maintainer:          bergey@alum.mit.edu
--- copyright:           
+copyright:           © 2014 Daniel Bergey
 category:            Text
 build-type:          Simple
 -- extra-source-files:  
