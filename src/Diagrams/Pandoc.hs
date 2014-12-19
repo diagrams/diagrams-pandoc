@@ -1,10 +1,12 @@
 {-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE NoMonomorphismRestriction       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 module Diagrams.Pandoc where
 
 import           Control.Lens                hiding ((<.>))
+import           Control.Monad
 import           Diagrams.Backend.Build
 import           Diagrams.Builder            as DB
 import           Diagrams.Builder.Opts       as DB
@@ -12,26 +14,29 @@ import           Diagrams.Prelude            hiding (block)
 import           System.FilePath
 import           System.IO
 import           Text.Pandoc.JSON
+import           Text.Read
 
 import           Diagrams.Backend.PGF
 import           Diagrams.Backend.Rasterific
 import           Diagrams.Backend.SVG
 
 defaultBackend :: Maybe Format -> Attr -> String -> IO Block
-defaultBackend mf =
+defaultBackend mf ats =
   case mf of
-    Just (Format "latex") -> addDiagramPGF pgfBuildOpts mf
-    Just (Format "html")  -> addDiagramSVG svgBuildOpts mf
-    _                     -> addDiagramRasterific rasterificBuildOpts mf
+    Just (Format "latex")   -> addDiagramPGF (alter pgfBuildOpts) mf ats
+    Just (Format "context") -> addDiagramPGF (alter pgfBuildOpts) mf ats
+    Just (Format "html")  -> addDiagramSVG (alter svgBuildOpts) mf ats
+    _                     -> addDiagramRasterific (alter rasterificBuildOpts) mf ats
+  where alter = alterOptions ats
 
 addDiagrams :: Maybe Format -> Block -> IO [Block]
 addDiagrams mf (CodeBlock attrs@(_ident, classes, _ats) code)
   | "diagram" `elem` classes = fmap pure dia
-  | "raster" `elem` classes  = fmap pure rasterDia
+  | "raster" `elem` classes  = fmap pure diaRaster
   -- TODO: cases for including code
   where
     dia = defaultBackend mf attrs code
-    rasterDia = addDiagramRasterific rasterificBuildOpts mf attrs code
+    diaRaster = addDiagramRasterific rasterificBuildOpts mf attrs code
 
 addDiagrams _ block = pure [block]
 
@@ -42,10 +47,25 @@ addDiagrams _ block = pure [block]
 --
 --   * no post-processing with \".nopostprocess\"
 --
---   * no hashing with ".nohash"
---
--- alterOptions :: BackendBuild b v n => BuildOpts b v n -> Attr -> BuildOpts b v n
--- alterOptions b (_ident, classes, _attrs) =
+alterOptions :: (Read n, Num n) => BackendBuild b v n => Attr -> BuildOpts b v n -> BuildOpts b v n
+alterOptions (_ident, classes, attrs) b =
+  b & case (lookupRead "width" attrs, lookupRead "height" attrs) of
+        (Just w, Just h)  -> buildSize .~ dims2D w h
+        (Just w, Nothing) -> buildSize .~ mkWidth w
+        (Nothing, Just h) -> buildSize .~ mkHeight h
+        _                 -> id
+    & whenever ("absolute" `elem` classes) (buildSize .~ absolute)
+    & whenever ("nopp" `elem` classes) (postProcess .~ id)
+    & maybe id (set diaExpr) (lookup "expr" attrs)
+
+lookupRead :: (Eq a, Read b) => a -> [(a, String)] -> Maybe b
+lookupRead a = lookup a >=> readMaybe
+
+whenever :: Bool -> (a -> a) -> a -> a
+whenever b f = if b then f else id
+
+buildSize :: BackendBuild b v n => Lens' (BuildOpts b v n) (SizeSpec V2 n)
+buildSize = backendOpts . outputSize
 
 ------------------------------------------------------------------------
 -- PGF
@@ -61,17 +81,23 @@ pgfBuildOpts = mkBuildOpts PGF zero with
                               ]
 
 addDiagramPGF :: BuildOpts PGF V2 Double -> Maybe Format -> Attr -> String -> IO Block
-addDiagramPGF opts mf _ats code = do
-  d <- compileDiagram opts code "tex"
-  case d of
-    Left err -> hPutStrLn stderr "An error occured! See output for detail."
-             >> return (CodeBlock nullAttr ("Error!\n" ++ err))
-    Right file -> case mf of
-      Just (Format "latex")
-        -> return $ RawBlock "latex" ("\\input{" ++ file ++ "}")
-      -- Just (Format "html")
-      --   -> do Image [] ""
-      _ -> return $ CodeBlock nullAttr ("Error!\n" ++ show mf)
+addDiagramPGF opts mf ats code = do
+  case mf of
+    Just (Format "latex") -> do
+      d <- compileDiagram opts code "tex"
+      handleError d $ \file -> RawBlock "latex" ("\\input{" ++ file ++ "}")
+
+    Just (Format "context") -> do
+      d <- compileDiagram (opts & backendOpts . surface .~ contextSurface) code "tex"
+      handleError d $ \file -> RawBlock "context" ("\\input{" ++ file ++ "}")
+
+    _ -> do d <- compileDiagram opts code "pdf"
+            handleError d $ \file -> Para [Image [Str $ ats^._1] (file,"diagram")]
+  where
+    handleError d b = case d of
+      Left err -> hPutStrLn stderr "An error occured! See output for detail."
+               >> return (CodeBlock nullAttr ("Error!\n" ++ err))
+      Right file -> return $ b file
 
 ------------------------------------------------------------------------
 -- SVG
@@ -81,7 +107,7 @@ svgBuildOpts :: BuildOpts SVG V2 Double
 svgBuildOpts = mkBuildOpts SVG zero (SVGOptions (dims2D 180 120) Nothing)
                  & diaExpr   .~ "example"
                  & hashCache ?~ "diagrams"
-                 & backendOpts . outputSize .~ dims2D 220 180
+                 & buildSize .~ dims2D 220 180
                  & imports .~ [ "Diagrams.Backend.SVG"
                               , "Diagrams.Prelude"
                               ]
@@ -103,7 +129,7 @@ rasterificBuildOpts :: BuildOpts Raster V2 Float
 rasterificBuildOpts = mkBuildOpts Rasterific zero (RasterificOptions (dims2D 180 120))
                  & diaExpr   .~ "example"
                  & hashCache ?~ "diagrams"
-                 & backendOpts . outputSize .~ dims2D 180 120
+                 & buildSize .~ dims2D 180 120
                  & imports .~ [ "Diagrams.Backend.Rasterific"
                               , "Diagrams.Prelude"
                               ]
