@@ -1,13 +1,21 @@
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE RankNTypes                #-}
 module Diagrams.Pandoc where
 
+import           Control.Applicative
 import           Control.Lens                hiding ((<.>))
 import           Control.Monad
+import           Control.Monad.IO.Class
+import           Data.Char                   (toLower)
+import           Data.Data.Lens
+import           Data.Foldable               (foldMap)
 import           Data.List                   (delete)
+import           Data.Maybe
 import           Diagrams.Backend.Build
 import           Diagrams.Builder            as DB
 import           Diagrams.Prelude            hiding (block)
@@ -25,64 +33,154 @@ import           Diagrams.Backend.SVG
 defaultSize :: Num n => SizeSpec V2 n
 defaultSize = dims2D 260 120
 
--- | Default filter to use for turning diagrams code blocks in to
---   diagrams.
-diaPandocFilter :: Maybe Format -> Pandoc -> IO Pandoc
-diaPandocFilter mf (Pandoc m bs) = Pandoc m <$> walk' (addDiagrams mf) bs
+-- | General walk over the blocks in a Pandoc document with access to
+--   the Meta and Format.
+--
+--   A common way to use this is with Pandoc's JSON filter:
+--
+-- @
+-- toJSONFilter $ pandocFilter (backendFilter defaultFilters)
+-- @
+pandocFilter :: Monad m => (Meta -> Maybe Format -> Block -> m [Block])
+             -> Maybe Format -> Pandoc -> m Pandoc
+pandocFilter f mf (Pandoc m bs) = Pandoc m `liftM` walkM' (f m mf) bs
   where
-    -- backend      = lookupMeta "backend" m
-    -- extraImports = lookupMeta "extra-imports" m
-    -- expression   = lookupMeta "diagram-expression" m
-    walk' f = bottomUpM (liftM concat . mapM f)
+    -- (Block -> m [Block]) -> [Block] -> m [Block]
+    walkM' g = bottomUpM (liftM concat . mapM g)
 
-defaultBackend :: Maybe Format -> Attr -> String -> IO Block
-defaultBackend mf ats =
-  case mf of
-    Just (Format "latex")   -> addDiagramPGF (alter pgfBuildOpts) mf ats
-    Just (Format "context") -> addDiagramPGF (alter pgfBuildOpts) mf ats
-    Just (Format "html")    -> addDiagramSVG (alter svgBuildOpts) mf ats
-    _                       -> addDiagramRasterific (alter rasterificBuildOpts) mf ats
-  where alter = alterOptions ats
+-- | An ad-hoc filter to build a diagram from a block. Putting them in a
+-- hetrogeneous container like this allows multiple backends to be used
+-- in a single document.
+data BackendFilter = forall b v n. (BackendBuild b v n, Read n, Num n) => BackendFilter
+  { nameMatch   :: String -> Bool  -- matches name of backend
+  , formatMatch :: Format -> Bool  -- matches format
+  , defaultOpts :: Options b v n   -- default options to use
+  , filterBuild :: Maybe Format -> BuildOpts b v n -> Attr -> String -> IO Block
+                                   -- Function to build diagram
+  }
 
-addDiagrams :: Maybe Format -> Block -> IO [Block]
-addDiagrams mf (CodeBlock attrs@(_ident, classes, _ats) code)
-  | "diagram" `elem` classes = fmap pure dia
-  | "raster" `elem` classes  = fmap pure diaRaster
-  | "diagram-code" `elem` classes = do
-       d <- dia
-       pure [d, CodeBlock (attrs & _2 %~ delete "diagram-code") code]
+type OptsAdjust = forall b v n. BackendBuild b v n
+                             => BuildOpts b v n -> BuildOpts b v n
+
+-- | Filters for 'Rasterific', 'SVG' and 'PGF' backends. Any other
+-- modules included by CPP will also be in this list. Rasterific is the
+-- first in the list so it will be used as fallback if no backend or
+-- 'Format' is found.
+defaultFilters :: [BackendFilter]
+defaultFilters = [rasterificFilter, svgFilter, pgfFilter]
+
+-- | Filter for turning 'CodeBlock's into diagrams using a list of
+--   'BackendFilter's. If no filters are given the pandoc output will
+--   show a message saying so. A message will also been shown in the
+--   document if there is an error in interpreting or compiling the
+--   diagram.
+--
+--   Currently implemented as follows:
+--
+--   * Diagrams are specified with the @.diagram@ class. There are also
+--     @.code-diagram@ and @.diagram-code@ classes for including code
+--     before/after respectively.
+--
+--     @@
+--     ``` diagram-code
+--     diagram = circle 3
+--     ```
+--     @@
+--
+--   * Backends are specified by the @default-backend@ 'Meta' value or
+--     the @backend@ key of the code block (case insensitive).
+--
+--     @@
+--     ---
+--     title: My SVG diagrams
+--     default-backend: svg
+--     ...
+--     @@
+--     @@
+--     ``` {.diagram backend=pgf}
+--     diagram = square 3 # fc blue # lw thick
+--     ```
+--     @@
+--     @@
+--     ``` {.diagram backend=Rasterific width=300}
+--     diagram = triangle 2 # fc yellow
+--     @@
+backendFilter :: MonadIO m => OptsAdjust -> [BackendFilter] -> Meta -> Maybe Format -> Block -> m [Block]
+backendFilter optsAdjust filters meta@(Meta m) mf (CodeBlock attrs@(bId, classes, keys) code)
+  | "diagram"      `elem` classes = mkDiagram
+  | "diagram-code" `elem` classes = (++ codeBlock) `liftM` mkDiagram
+  | "code-diagram" `elem` classes = (codeBlock ++) `liftM` mkDiagram
   where
-    dia       = defaultBackend mf attrs code
-    diaRaster = addDiagramRasterific rasterificBuildOpts mf attrs code
+    mkDiagram = liftIO $ case backend of
+      Just (BackendFilter _ _ opts f) ->
+        let bOpts = mkBuildOpts undefined undefined opts
+                      & keysOptsAlter meta attrs
+                      & optsAdjust
+        in  pure `liftM` f mf bOpts attrs code
+      Nothing -> return [code_ "A diagram should be here but no backend filters where found."]
 
-addDiagrams _ block = pure [block]
+    codeBlock = [CodeBlock (bId, rmCode classes, keys) code]
+    rmCode    = cons "haskell" . delete "diagram-code" . delete "code-diagram"
+    backend   = test nameMatch bName <|> test formatMatch mf <|> listToMaybe filters
+    -- try to match names or formats, use head as fallback
+    bName     = map toLower
+            <$> lookup "backend" keys
+            <|> m ^? foldMap ix ["default-backend", "diagrams-backend", "backend"] . template
+    -- query filters for the first match
+    test :: (BackendFilter -> a -> Bool) -> Maybe a -> Maybe BackendFilter
+    test f ma = ma >>= \a -> listToMaybe $ filter (`f` a) filters
+backendFilter _ _ _ _ b = return [b]
 
--- | Alter build options from args including:
+-- | Alter the 'BuildOpts' using the document's 'Meta' and the code
+--   block's 'Attr'. Current supported adjustments are:
 --
---   * change size spec via \"width=10\", \"height=20\" or
---     \".absolute\"
+--   * Change size with @width=@ and @size=@ keys or @.absolute@ class:
 --
---   * no post-processing with \".nopostprocess\"
+--     @@
+--     ``` {.diagram width=300 height=200}
+--     -- Or
+--     ``` {.diagram .absolute}
+--     example = pentagon 100 # fc orange
+--     ```
+--     @@
 --
-alterOptions :: (Read n, Num n) => BackendBuild b v n => Attr -> BuildOpts b v n -> BuildOpts b v n
-alterOptions (_ident, classes, attrs) b =
-  b & case (lookupRead "width" attrs, lookupRead "height" attrs) of
+--   * Don't post-process the diagram with @.no-post-process@ class.
+--
+--   * Change the expression with @diagram-expression@ 'Meta' value or
+--     @'diagram-expression=@ key.
+--
+--   * Include extra modules with @extra-diagrams-modules@ or
+--     @extra-modules@ types in the document 'Meta'. For example, in a
+--     markdown header:
+--
+--     @@
+--     ---
+--     title: Pretty diagrams
+--     extra-diagrams-modules:
+--       - Diagrams.TwoD.Sunburst
+--       - Diagrams.TwoD.Factorization
+--     ...
+--
+--     Rest of markdown document.
+--     @@
+--
+keysOptsAlter :: (Read n, Num n, BackendBuild b v n)
+              => Meta -> Attr -> BuildOpts b v n -> BuildOpts b v n
+keysOptsAlter (Meta m) (_ident, classes, keys) b =
+  b & case (lookupRead "width" keys, lookupRead "height" keys) of
         (Just w, Just h)  -> buildSize .~ dims2D w h
         (Just w, Nothing) -> buildSize .~ mkWidth w
         (Nothing, Just h) -> buildSize .~ mkHeight h
         _                 -> id
     & whenever ("absolute" `elem` classes) (buildSize .~ absolute)
-    & whenever ("nopp" `elem` classes) (postProcess .~ id)
-    & maybe id (set diaExpr) (lookup "expr" attrs)
+    & whenever ("no-post-process" `elem` classes) (postProcess .~ id)
+    & maybe id (set diaExpr) expr
+    & imports <>~ extraMods
+  where
+    extraMods = m ^.. (ix "extra-diagrams-modules" <> ix "extra-modules") . template
 
-lookupRead :: (Eq a, Read b) => a -> [(a, String)] -> Maybe b
-lookupRead a = lookup a >=> readMaybe
-
-whenever :: Bool -> (a -> a) -> a -> a
-whenever b f = if b then f else id
-
-buildSize :: BackendBuild b v n => Lens' (BuildOpts b v n) (SizeSpec V2 n)
-buildSize = backendOpts . outputSize
+    expr = lookup "diagram-expression" keys
+       <|> m ^? ix "diagram-expression" . template
 
 ------------------------------------------------------------------------
 -- Pandoc building
@@ -110,6 +208,14 @@ handleError d b = case d of
 -- PGF
 ------------------------------------------------------------------------
 
+pgfFilter :: BackendFilter
+pgfFilter = BackendFilter
+  { nameMatch   = (`elem` ["pgf", "portable-graphics-format"])
+  , formatMatch = (`elem` ["latex", "context", "pdf"])
+  , defaultOpts = with & outputSize .~ defaultSize
+  , filterBuild = addDiagramPgf
+  }
+
 pgfBuildOpts :: BuildOpts PGF V2 Double
 pgfBuildOpts = mkBuildOpts PGF zero with
                  & diaExpr   .~ "example"
@@ -119,8 +225,8 @@ pgfBuildOpts = mkBuildOpts PGF zero with
                                 , "Diagrams.Prelude"
                                 ]
 
-addDiagramPGF :: BuildOpts PGF V2 Double -> Maybe Format -> Attr -> String -> IO Block
-addDiagramPGF opts mf ats code =
+addDiagramPgf :: Maybe Format -> BuildOpts PGF V2 Double -> Attr -> String -> IO Block
+addDiagramPgf mf opts_ ats code =
   case mf of
     Just (Format "latex") -> do
       d <- compileDiagram opts code "tex"
@@ -133,10 +239,20 @@ addDiagramPGF opts mf ats code =
     _ -> do
       d <- compileDiagram opts code "pdf"
       handleError d $ image_ (ats^._1) "diagram"
+  where
+    opts = opts_ & imports <>~ ["Diagrams.Backend.PGF"]
 
 ------------------------------------------------------------------------
 -- SVG
 ------------------------------------------------------------------------
+
+svgFilter :: BackendFilter
+svgFilter = BackendFilter
+  { nameMatch   = (`elem` ["svg"])
+  , formatMatch = (`elem` ["html", "md", "markdown"])
+  , defaultOpts = SVGOptions defaultSize Nothing
+  , filterBuild = addDiagramSVG
+  }
 
 svgBuildOpts :: BuildOpts SVG V2 Double
 svgBuildOpts = mkBuildOpts SVG zero (SVGOptions defaultSize Nothing)
@@ -146,16 +262,26 @@ svgBuildOpts = mkBuildOpts SVG zero (SVGOptions defaultSize Nothing)
                                 , "Diagrams.Prelude"
                                 ]
 
-addDiagramSVG :: BuildOpts SVG V2 Double -> Maybe Format -> Attr -> String -> IO Block
-addDiagramSVG opts _mf ats code = do
+addDiagramSVG :: Maybe Format -> BuildOpts SVG V2 Double -> Attr -> String -> IO Block
+addDiagramSVG _ opts_ ats code = do
   d <- compileDiagram opts code "svg"
   handleError d $ image_ (ats^._1) "diagram"
+  where
+    opts = opts_ & imports <>~ ["Diagrams.Backend.SVG"]
 
 ------------------------------------------------------------------------
 -- Rasterific
 ------------------------------------------------------------------------
 
 type Raster = Rasterific
+
+rasterificFilter :: BackendFilter
+rasterificFilter = BackendFilter
+  { nameMatch   = (`elem` ["rasterific", "raster"])
+  , formatMatch = const False -- Rasterific is the fallback (so first in list)
+  , defaultOpts = RasterificOptions defaultSize
+  , filterBuild = addDiagramRasterific
+  }
 
 rasterificBuildOpts :: BuildOpts Raster V2 Float
 rasterificBuildOpts = mkBuildOpts Rasterific zero (RasterificOptions defaultSize)
@@ -165,13 +291,15 @@ rasterificBuildOpts = mkBuildOpts Rasterific zero (RasterificOptions defaultSize
                                 , "Diagrams.Prelude"
                                 ]
 
-addDiagramRasterific :: BuildOpts Rasterific V2 Float -> Maybe Format -> Attr -> String -> IO Block
-addDiagramRasterific opts _mf ats code = do
+addDiagramRasterific :: Maybe Format -> BuildOpts Rasterific V2 Float -> Attr -> String -> IO Block
+addDiagramRasterific _ opts_ ats code = do
   d <- compileDiagram opts code "png"
   handleError d $ image_ (ats^._1) "diagram"
+  where
+    opts = opts_ & imports <>~ ["Diagrams.Backend.Rasterific"]
 
 ------------------------------------------------------------------------
--- Compiling
+-- Utilities
 ------------------------------------------------------------------------
 
 -- | @compileDiagram opts src ext@ compiles the literate source code of
@@ -188,3 +316,11 @@ compileDiagram opts src ext = do
     InterpError e -> Left $ ppInterpError e
     ParseError e  -> Left e
 
+lookupRead :: (Eq a, Read b) => a -> [(a, String)] -> Maybe b
+lookupRead a = lookup a >=> readMaybe
+
+whenever :: Bool -> (a -> a) -> a -> a
+whenever b f = if b then f else id
+
+buildSize :: BackendBuild b v n => Lens' (BuildOpts b v n) (SizeSpec V2 n)
+buildSize = backendOpts . outputSize
