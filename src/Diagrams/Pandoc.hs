@@ -250,12 +250,12 @@ svgFilter :: BackendFilter
 svgFilter = BackendFilter
   { nameMatch   = (`elem` ["svg"])
   , formatMatch = (`elem` ["html", "md", "markdown"])
-  , defaultOpts = SVGOptions defaultSize Nothing
+  , defaultOpts = SVGOptions defaultSize []
   , filterBuild = addDiagramSVG
   }
 
 svgBuildOpts :: BuildOpts SVG V2 Double
-svgBuildOpts = mkBuildOpts SVG zero (SVGOptions defaultSize Nothing)
+svgBuildOpts = mkBuildOpts SVG zero (SVGOptions defaultSize [])
                  & diaExpr   .~ "example"
                  & hashCache ?~ "diagrams"
                  & imports   .~ [ "Diagrams.Backend.SVG"
