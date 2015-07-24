@@ -40,8 +40,7 @@ block, and the `diagram-haskell` class is replaced by the `haskell`
 class, so that pandoc can perform syntax highlighting as usual.
 
 I have only tested with pandoc's markdown reader.  In particular, the
-rst reader doesn't seem to currently support adding classes to code
-blocks.
+rst reader does not attach classes to code blocks, only to Div elements.
 
 ## Installing
 
@@ -61,3 +60,4 @@ repository, and install with cabal.
   code block alone?
 * provide command-line flags to override default behavior
 * add Backends besides Cairo
+* Support RST by handling `Div class=diagram [CodeBlock foo bar]` the same as `CodeBlock class=diagram bar`
