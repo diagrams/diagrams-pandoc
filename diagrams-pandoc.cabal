@@ -8,12 +8,16 @@ synopsis:            A pandoc filter to express diagrams inline using the haskel
 license:             BSD3
 license-file:        LICENSE
 author:              Daniel Bergey
-maintainer:          bergey@teallabs.org
-copyright:           © 2014-2015 Daniel Bergey
+maintainer:          diagrams-discuss@googlegroups.com
 category:            Text
 build-type:          Simple
--- extra-source-files:  
+Bug-reports:         http://github.com/diagrams/diagrams-pandoc/issues
+Extra-source-files:  README.md
 cabal-version:       >=1.10
+Source-repository head
+  type:     git
+  location: http://github.com/diagrams/diagrams-pandoc.git
+
 
 executable diagrams-pandoc
   main-is:             Main.hs
