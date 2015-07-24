@@ -8,8 +8,8 @@ synopsis:            A pandoc filter to express diagrams inline using the haskel
 license:             BSD3
 license-file:        LICENSE
 author:              Daniel Bergey
-maintainer:          bergey@alum.mit.edu
-copyright:           © 2014 Daniel Bergey
+maintainer:          bergey@teallabs.org
+copyright:           © 2014-2015 Daniel Bergey
 category:            Text
 build-type:          Simple
 -- extra-source-files:  
