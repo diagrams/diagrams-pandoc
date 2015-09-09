@@ -7,7 +7,11 @@ import qualified Diagrams.Builder                as DB
 import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
-import           Options.Applicative
+import           Options.Applicative             (Parser, ParserInfo,
+                                                  execParser, fullDesc, header,
+                                                  help, helper, info, long,
+                                                  metavar, progDesc, short,
+                                                  strOption, value, (<>))
 import           System.Directory                (createDirectory,
                                                   doesDirectoryExist)
 import           System.FilePath                 ((<.>), (</>))
@@ -17,8 +21,8 @@ import           Text.Pandoc.JSON
 
 main :: IO ()
 main = do
-    opts <- execParser withHelp
-    toJSONFilter $ insertDiagrams opts
+   --opts <- execParser withHelp
+   toJSONFilter $ insertDiagrams $ Opts "images" "example"
 
 optsParser :: Parser Opts
 optsParser = Opts
