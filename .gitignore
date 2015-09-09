@@ -15,3 +15,6 @@ TAGS
 .diagrams-cache
 /cabal.sandbox.config
 /.cabal-sandbox/
+test/images
+test/*.html
+/test/.cabal-sandbox
