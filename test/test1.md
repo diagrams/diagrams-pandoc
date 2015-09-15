@@ -1,6 +1,6 @@
 Here is a square:
 
-``` {.diagram}
+``` {.diagrams}
 example = square 1
 ```
 
