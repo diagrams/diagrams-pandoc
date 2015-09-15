@@ -1,28 +1,15 @@
-import           Control.Applicative
-import           Control.Monad                   (when)
-import           Data.List                       (delete)
-import           Diagrams.Backend.Cairo
-import           Diagrams.Backend.Cairo.Internal
-import qualified Diagrams.Builder                as DB
-import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
-import           Diagrams.Size                   (dims)
-import           Linear                          (V2 (..), zero)
 import           Options.Applicative             (Parser, ParserInfo,
                                                   execParser, fullDesc, header,
                                                   help, helper, info, long,
                                                   metavar, progDesc, short,
                                                   strOption, value, (<>))
-import           System.Directory                (createDirectory,
-                                                  doesDirectoryExist)
-import           System.FilePath                 ((<.>), (</>))
-import           System.IO
 import           Text.Pandoc.Diagrams
 import           Text.Pandoc.JSON
 
 main :: IO ()
 main = do
    --opts <- execParser withHelp
-   toJSONFilter $ insertDiagrams $ Opts "images" "example"
+   toJSONFilter $ insertDiagrams (Opts "images" "example") False
 
 optsParser :: Parser Opts
 optsParser = Opts
