@@ -1,5 +1,6 @@
 flags: {}
 packages:
 - '.'
+- ../diagrams-builder
 extra-deps: []
 resolver: lts-3.2
