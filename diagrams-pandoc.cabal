@@ -26,11 +26,11 @@ executable diagrams-pandoc
   build-depends:       base >= 4.6 && < 4.9,
                        pandoc-types >= 1.12.4.5 && < 1.13,
                        diagrams-lib >= 1.3 && < 1.4,
-                       linear >= 1.10 && < 1.20,
+                       linear >= 1.10 && < 1.21,
                        diagrams-builder >= 0.7 && < 0.8,
                        diagrams-cairo >= 1.3 && < 1.4,
                        directory >= 1.2 && < 1.3,
                        filepath >= 1.3 && < 1.5,
-                       optparse-applicative >= 0.11 && < 0.12
+                       optparse-applicative >= 0.11 && < 0.13
   -- hs-source-dirs:      
   default-language:    Haskell2010
