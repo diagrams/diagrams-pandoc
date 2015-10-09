@@ -24,6 +24,7 @@ backendExt :: String
 backendExt = "png"
 
 data Opts = Opts {
+    _outFormat  :: String, -- ^ Not currently used
     _outDir     :: FilePath,
     _expression :: String
     }

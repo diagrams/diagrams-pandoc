@@ -12,7 +12,8 @@ main = do
 
 optsParser :: Parser Opts
 optsParser = Opts
-             <$> strOption (long "out" <> short 'o' <> metavar "DIR"
+             <$> strArgument (help "target output format from pandoc" <> value "html")
+             <*> strOption (long "out" <> short 'o' <> metavar "DIR"
                             <> help "Directory for image files" <> value "images")
              <*> strOption (long "expression" <> long "expr" <> short 'e' <>
                             metavar "NAME" <>
@@ -22,5 +23,5 @@ optsParser = Opts
 withHelp :: ParserInfo Opts
 withHelp = info
        (helper <*> optsParser)
-       (fullDesc <> progDesc "interpret inline Haskell code to images in Pandoc output\nhttps://github.com/bergey/diagrams-pandoc"
+       (fullDesc <> progDesc "interpret inline Haskell code to insert images in Pandoc output\nhttps://github.com/bergey/diagrams-pandoc"
        <> header "diagrams-pandoc - a Pandoc filter for inline Diagrams")
