@@ -5,6 +5,7 @@
 module Text.Pandoc.Diagrams where
 
 import           Control.Monad                   (when)
+import           Data.Char                       (toLower)
 import           Data.List                       (delete)
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
@@ -27,17 +28,24 @@ data Opts = Opts {
     _expression :: String
     }
 
+data Echo = Above | Below
+
 insertDiagrams :: Opts -> Block -> IO [Block]
 insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
-    | "diagram-haskell" `elem` classes = (++ [bl']) <$> img
-    | "diagram" `elem` classes = img
+    | "diagram-haskell" `elem` classes = do
+      i <- img
+      return $ case echo of
+        Above -> [bl', i]
+        Below -> [i, bl']
+    | "diagram" `elem` classes = (:[]) <$> img
   where
     img = do
         d <- compileDiagram opts code
         return $ case d of
-            Left _err     -> []  -- TODO log an error here
-            Right imgName -> [Plain [Image [] (imgName,"")]] -- no alt text, no title
+            Left _err     -> Null  -- TODO log an error here
+            Right imgName -> Plain [Image [] (imgName,"")] -- no alt text, no title
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
+    echo = readEcho attrs
 insertDiagrams _ block = return [block]
 
 -- Copied from https://github.com/diagrams/diagrams-doc/blob/master/doc/Xml2Html.hs
@@ -107,3 +115,10 @@ compileDiagram opts src = do
   ensureDir dir = do
     b <- doesDirectoryExist dir
     when (not b) $ createDirectory dir
+
+readEcho :: [(String, String)] -> Echo
+readEcho attrs = case lookup "echo" attrs of
+  Nothing -> Below
+  Just v -> case map toLower v of
+    "above" -> Above
+    _ -> Below
