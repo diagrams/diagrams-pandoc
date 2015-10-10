@@ -44,14 +44,7 @@ rst reader does not attach classes to code blocks, only to Div elements.
 
 ## Installing
 
-`diagrams-pandoc` is not yet on Hackage.  To install, clone this
-repository, and install with cabal.
-
-``` shell
-    git clone https://github.com/bergey/diagrams-pandoc.git
-    cd diagrams-pandoc
-    cabal install
-```
+`diagrams-pandoc` is on Hackage.  To install, run `cabal install diagrams-pandoc`
 
 ## TODO
 
@@ -61,3 +54,4 @@ repository, and install with cabal.
 * provide command-line flags to override default behavior
 * add Backends besides Cairo
 * Support RST by handling `Div class=diagram [CodeBlock foo bar]` the same as `CodeBlock class=diagram bar`
+* Alternate install directions using `stack`
