@@ -18,7 +18,7 @@ matrix:
 before_install:
   - git clone http://github.com/diagrams/diagrams-travis travis
   - source travis/scripts/set_env.sh
-  - "echo 'constraint: transformers installed' >> cabal.config"
+  - "echo 'constraints: transformers installed' >> cabal.config"
   - ./travis/scripts/before_install.sh
 
 install: ./travis/scripts/install.sh
