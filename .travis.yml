@@ -10,7 +10,7 @@ env:
     - UBUNTU_PKGS="libgtk-3-dev libcairo2-dev"
     - EXTRA_DEPS_PRE="gtk2hs-buildtools"
     - HEAD_DEPS="diagrams-core diagrams-lib diagrams-cairo diagrams-svg diagrams-postscript diagrams-builder"
-    - CABAL_FLAGS="--constraint='transformers installed'"
+    - CABAL_FLAGS="--constraint=transformers\\ installed"
 
 matrix:
   allow_failures:
