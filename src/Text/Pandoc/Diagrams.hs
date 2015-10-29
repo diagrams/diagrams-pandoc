@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 -- | Convert appropriately annotated Code blocks to an image, with or
 -- without display of the code.  Interpret the Code blocks as Haskell
 -- code using the Diagrams libraries.
@@ -18,6 +20,10 @@ import           System.Directory                (createDirectory,
 import           System.FilePath                 ((<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
 
 -- TODO choose output format based on pandoc target
 backendExt :: String
