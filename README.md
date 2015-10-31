@@ -39,6 +39,10 @@ block.  The input block is replaced by image appears before the code
 block, and the `diagram-haskell` class is replaced by the `haskell`
 class, so that pandoc can perform syntax highlighting as usual.
 
+`diagrams-pandoc` produces images in the `pdf` format when used with
+the `latex` and `beamer` writers of `pandoc` and produced `png` output
+otherwise.
+
 I have only tested with pandoc's markdown reader.  In particular, the
 rst reader does not attach classes to code blocks, only to Div elements.
 

@@ -25,12 +25,19 @@ import           Text.Pandoc.Definition
 import Control.Applicative
 #endif
 
--- TODO choose output format based on pandoc target
-backendExt :: String
-backendExt = "png"
+backendExt :: String -> String
+backendExt "beamer" = "pdf"
+backendExt "latex" = "pdf"
+backendExt _ = "png"
+
+-- Return output type for a string
+findOutputType :: String -> OutputType
+findOutputType "beamer" = PDF
+findOutputType "latex" = PDF
+findOutputType _ = PNG
 
 data Opts = Opts {
-    _outFormat  :: String, -- ^ Not currently used
+    _outFormat  :: String,
     _outDir     :: FilePath,
     _expression :: String
     }
@@ -58,7 +65,7 @@ insertDiagrams _ block = return [block]
 -- Copied from https://github.com/diagrams/diagrams-doc/blob/master/doc/Xml2Html.hs
 -- With the CPP removed, thereby requiring Cairo
 -- TODO clean this up, move it into -builder somehow
--- | Compile the literate source code of a diagram to a .png file with
+-- | Compile the literate source code of a diagram to a .png/.pdf file with
 --   a file name given by a hash of the source code contents
 compileDiagram :: Opts -> String -> IO (Either String String)
 compileDiagram opts src = do
@@ -72,7 +79,11 @@ compileDiagram opts src = do
 
                 zero
 
-                (CairoOptions "default.png" (dims $ V2 500 200) PNG False)
+                (CairoOptions "default.png"
+                              (dims $ V2 500 200)
+                              (findOutputType $ _outFormat opts)
+                              False
+                )
 
                 & DB.snippets .~ [src]
                 & DB.imports  .~
@@ -118,7 +129,7 @@ compileDiagram opts src = do
       return $ Right (mkFile (DB.hashToHexStr hash))
 
  where
-  mkFile base = _outDir opts </> base <.> backendExt
+  mkFile base = _outDir opts </> base <.> (backendExt $ _outFormat opts)
   ensureDir dir = do
     b <- doesDirectoryExist dir
     when (not b) $ createDirectory dir
