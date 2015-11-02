@@ -31,6 +31,9 @@ to be run as a
 [pandoc filter](http://johnmacfarlane.net/pandoc/scripting.html) as
 shown above.
 
+`diagrams-pandoc` evaluates the diagrams expression `example` by
+default. This can be modified by passing a command line argument.
+
 `diagrams-pandoc` is aware of two code block classes.  A block with
 the `diagram` class will be replaced by the resulting image---the code
 will not appear in the output.  A block with the `diagram-haskell`
