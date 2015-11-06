@@ -47,7 +47,7 @@ insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
     | "diagram" `elem` classes = (:[]) <$> img
   where
     img = do
-        d <- compileDiagram opts code
+        d <- compileDiagram opts attrs code
         return $ case d of
             Left _err     -> Null  -- TODO log an error here
             Right imgName -> Plain [Image [] (imgName,"")] -- no alt text, no title
@@ -60,8 +60,8 @@ insertDiagrams _ block = return [block]
 -- TODO clean this up, move it into -builder somehow
 -- | Compile the literate source code of a diagram to a .png file with
 --   a file name given by a hash of the source code contents
-compileDiagram :: Opts -> String -> IO (Either String String)
-compileDiagram opts src = do
+compileDiagram :: Opts -> [(String,String)] -> String -> IO (Either String String)
+compileDiagram opts attrs src = do
   ensureDir $ _outDir opts
 
   let
@@ -72,7 +72,7 @@ compileDiagram opts src = do
 
                 zero
 
-                (CairoOptions "default.png" (dims $ V2 500 200) PNG False)
+                (CairoOptions "default.png" (dims $ V2 (widthAttribute attrs) (heightAttribute attrs)) PNG False)
 
                 & DB.snippets .~ [src]
                 & DB.imports  .~
@@ -122,6 +122,18 @@ compileDiagram opts src = do
   ensureDir dir = do
     b <- doesDirectoryExist dir
     when (not b) $ createDirectory dir
+
+widthAttribute :: [(String,String)] -> Double
+widthAttribute attrs =
+    case lookup "width" attrs of
+        Nothing -> 500
+        Just v  -> read v :: Double
+
+heightAttribute :: [(String,String)] -> Double
+heightAttribute attrs =
+    case lookup "height" attrs of
+        Nothing -> 200
+        Just v  -> read v :: Double
 
 readEcho :: [(String, String)] -> Echo
 readEcho attrs = case lookup "echo" attrs of
