@@ -12,3 +12,8 @@ pandoc -t html test2.md --filter diagrams-pandoc -o test2.html -s
 
 #test diagram with attributes
 pandoc -t html test3.md --filter diagrams-pandoc -o test3.html -s
+
+#test creation of multiple directories
+pandoc -t json test1.md | \
+    diagrams-pandoc -o images/some/dir/deep/down | \
+    pandoc -f json -t html -o test1-b.html -s

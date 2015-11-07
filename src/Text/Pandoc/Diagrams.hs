@@ -15,8 +15,7 @@ import qualified Diagrams.Builder                as DB
 import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
-import           System.Directory                (createDirectory,
-                                                  doesDirectoryExist)
+import           System.Directory                (createDirectoryIfMissing)
 import           System.FilePath                 ((<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
@@ -120,8 +119,7 @@ compileDiagram opts attrs src = do
  where
   mkFile base = _outDir opts </> base <.> backendExt
   ensureDir dir = do
-    b <- doesDirectoryExist dir
-    when (not b) $ createDirectory dir
+    createDirectoryIfMissing True dir
 
 widthAttribute :: [(String,String)] -> Double
 widthAttribute attrs =
