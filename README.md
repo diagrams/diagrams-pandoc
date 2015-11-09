@@ -23,6 +23,21 @@ Install diagrams-pandoc, then run pandoc as follows:
 
 The file demo.html should now have an img tag pointing at a PNG of a circle.
 
+## Attributes
+
+You can specify attributes to control how the diagram is generated.
+The following, for example,
+``` markdown
+    ~~~ {.diagram width=800 height=400}
+    example = circle 1
+    ~~~
+```
+will override the default width and height of the generated diagram.
+The following attributes are supported:
+
+* `width`: The width of the generated diagram, in pixels. The default is 500.
+* `height`: The height of the generated diagram, in pixels. The default is 200.
+
 ## Details
 
 `diagrams-pandoc` compiles code blocks containing diagrams expressions
