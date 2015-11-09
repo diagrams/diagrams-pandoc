@@ -46,6 +46,9 @@ to be run as a
 [pandoc filter](http://johnmacfarlane.net/pandoc/scripting.html) as
 shown above.
 
+`diagrams-pandoc` evaluates the diagrams expression `example` by
+default. This can be modified by passing a command line argument.
+
 `diagrams-pandoc` is aware of two code block classes.  A block with
 the `diagram` class will be replaced by the resulting image---the code
 will not appear in the output.  A block with the `diagram-haskell`
@@ -53,6 +56,10 @@ class will produce both an image and a (syntax highlighted) code
 block.  The input block is replaced by image appears before the code
 block, and the `diagram-haskell` class is replaced by the `haskell`
 class, so that pandoc can perform syntax highlighting as usual.
+
+`diagrams-pandoc` produces images in the `pdf` format when used with
+the `latex` and `beamer` writers of `pandoc` and produced `png` output
+otherwise.
 
 I have only tested with pandoc's markdown reader.  In particular, the
 rst reader does not attach classes to code blocks, only to Div elements.
