@@ -10,7 +10,8 @@ import           Control.Lens                    ((&), (.~), (<>~))
 import           Data.Char                       (toLower)
 import           Data.List                       (delete)
 import qualified Diagrams.Builder                as DB
-import           Diagrams.Prelude                (Result, centerXY, pad)
+import           Diagrams.Prelude                (Options, Result, SizeSpec,
+                                                  centerXY, pad)
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
@@ -18,26 +19,26 @@ import           System.FilePath                 (takeExtension, (<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
 
+#ifdef CAIRO
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
+#endif
 
+#ifdef RASTERIFIC
 import qualified Codec.Picture                   as JP
-import           Diagrams.Backend.Rasterific
+import           Diagrams.Backend.Rasterific     hiding (Options)
+#endif
 
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative
 #endif
 
 backendExt :: String -> String
+#ifdef CAIRO
 backendExt "beamer" = "pdf"
 backendExt "latex" = "pdf"
+#endif
 backendExt _ = "png"
-
--- Return output type for a string
-findOutputType :: String -> OutputType
-findOutputType "beamer" = PDF
-findOutputType "latex" = PDF
-findOutputType _ = PNG
 
 data Opts = Opts {
     _outFormat  :: String,
@@ -80,28 +81,32 @@ compileDiagram :: Snippet -> IO (Maybe String)
 compileDiagram snip = do
   createDirectoryIfMissing True . _outDir . _opts $ snip
 
-  case _outFormat . _opts $ snip of
-    "html" -> do
-      let
-        bopts :: DB.BuildOpts Rasterific V2 Double
-        bopts = DB.mkBuildOpts Rasterific zero
-                (RasterificOptions dimensions)
-      handleResult snip =<< DB.buildDiagram bopts
-    _ -> do
-      let
-        bopts :: DB.BuildOpts Cairo V2 Double
-        bopts = DB.mkBuildOpts Cairo zero
-                ( CairoOptions "default.png"
-                  dimensions
-                  (findOutputType . _outFormat . _opts $ snip)
-                  False
-                ) & DB.imports .~
-                  [ "Diagrams.Backend.Cairo"
-                  , "Diagrams.Backend.Cairo.Internal"
-                  ] & snippetBuildOpts snip
-      handleResult snip =<< DB.buildDiagram bopts
-  where
-    dimensions = dims $ V2 (widthAttribute $ _attrs snip) (heightAttribute $ _attrs snip)
+#ifdef RASTERIFIC
+  let
+    bopts :: DB.BuildOpts Rasterific V2 Double
+    bopts = DB.mkBuildOpts Rasterific zero
+            (RasterificOptions $ dimensions snip)
+            & DB.imports .~ [ "Diagrams.Backend.Rasterific" ]
+            & snippetBuildOpts snip
+#endif
+
+#if CAIRO
+  let
+    bopts :: DB.BuildOpts Cairo V2 Double
+    bopts = DB.mkBuildOpts Cairo zero
+            ( CairoOptions "default.png"
+              (dimensions snip)
+              (findOutputType . _outFormat . _opts $ snip)
+              False
+            ) & DB.imports .~
+              [ "Diagrams.Backend.Cairo"
+              , "Diagrams.Backend.Cairo.Internal"
+              ] & snippetBuildOpts snip
+#endif
+  handleResult snip =<< DB.buildDiagram bopts
+
+dimensions :: Snippet -> SizeSpec V2 Double
+dimensions snip = dims $ V2 (widthAttribute $ _attrs snip) (heightAttribute $ _attrs snip)
 
 snippetBuildOpts :: FileBackend b =>
   Snippet -> DB.BuildOpts b V2 Double -> DB.BuildOpts b V2 Double
@@ -178,10 +183,20 @@ class FileBackend b where
   renderToFile :: FilePath -> DB.BuildResult b V2 Double -> Result b V2 Double -> IO ()
   backendFileName :: FilePath -> Options b V2 Double -> Options b V2 Double
 
+#ifdef CAIRO
 instance FileBackend Cairo where
   renderToFile _fn _br (write, _) = write
   backendFileName = (cairoFileName .~)
 
+-- Return output type for a string
+findOutputType :: String -> OutputType
+findOutputType "beamer" = PDF
+findOutputType "latex" = PDF
+findOutputType _ = PNG
+#endif
+
+#ifdef RASTERIFIC
 instance FileBackend Rasterific where
   renderToFile outFile _br img = JP.writePng outFile img
   backendFileName = const id
+#endif
