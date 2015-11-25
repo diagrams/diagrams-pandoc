@@ -6,20 +6,23 @@
 
 module Text.Pandoc.Diagrams where
 
-import           Control.Lens                    (Lens', (&), (.~), (<>~))
+import           Control.Lens                    ((&), (.~), (<>~))
 import           Data.Char                       (toLower)
 import           Data.List                       (delete)
-import           Diagrams.Backend.Cairo
-import           Diagrams.Backend.Cairo.Internal
 import qualified Diagrams.Builder                as DB
-import           Diagrams.Prelude                (Options, Result, centerXY,
-                                                  pad)
+import           Diagrams.Prelude                (Result, centerXY, pad)
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
-import           System.FilePath                 ((<.>), (</>))
+import           System.FilePath                 (takeExtension, (<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
+
+import           Diagrams.Backend.Cairo
+import           Diagrams.Backend.Cairo.Internal
+
+import qualified Codec.Picture                   as JP
+import           Diagrams.Backend.Rasterific
 
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative
@@ -77,9 +80,17 @@ compileDiagram :: Snippet -> IO (Maybe String)
 compileDiagram snip = do
   createDirectoryIfMissing True . _outDir . _opts $ snip
 
-  let
-      bopts :: DB.BuildOpts Cairo V2 Double
-      bopts = DB.mkBuildOpts Cairo zero
+  case _outFormat . _opts $ snip of
+    "html" -> do
+      let
+        bopts :: DB.BuildOpts Rasterific V2 Double
+        bopts = DB.mkBuildOpts Rasterific zero
+                (RasterificOptions dimensions)
+      handleResult snip =<< DB.buildDiagram bopts
+    _ -> do
+      let
+        bopts :: DB.BuildOpts Cairo V2 Double
+        bopts = DB.mkBuildOpts Cairo zero
                 ( CairoOptions "default.png"
                   dimensions
                   (findOutputType . _outFormat . _opts $ snip)
@@ -88,8 +99,7 @@ compileDiagram snip = do
                   [ "Diagrams.Backend.Cairo"
                   , "Diagrams.Backend.Cairo.Internal"
                   ] & snippetBuildOpts snip
-
-  handleResult snip =<< DB.buildDiagram bopts
+      handleResult snip =<< DB.buildDiagram bopts
   where
     dimensions = dims $ V2 (widthAttribute $ _attrs snip) (heightAttribute $ _attrs snip)
 
@@ -109,7 +119,7 @@ snippetBuildOpts snip bopts =
   & DB.diaExpr .~ _expression (_opts snip)
   & DB.postProcess .~ (pad 1.1 . centerXY)
   & DB.decideRegen .~ DB.hashedRegenerate
-  (\hash -> backendFileName .~ mkFile snip hash )
+  (\hash -> backendFileName (mkFile snip hash) )
   (_outDir $ _opts snip)
 
 handleResult :: FileBackend b =>
@@ -133,8 +143,9 @@ handleResult snip res = case res of
     DB.OK hash out -> do
       hPutStr stderr "O"
       hFlush stderr
-      renderToFile res out
-      return $ Just (mkFile snip (DB.hashToHexStr hash))
+      let fn = mkFile snip (DB.hashToHexStr hash)
+      renderToFile fn res out
+      return $ Just fn
 
 mkFile :: Snippet -> FilePath -> FilePath
 mkFile snip base =
@@ -164,9 +175,13 @@ readEcho attrs = case lookup "echo" attrs of
 class FileBackend b where
   -- The first argument of each is a proxy to fix the type b
   -- Note that Result is a type alias, so doesn't fix b
-  renderToFile :: DB.BuildResult b V2 Double -> Result b V2 Double -> IO ()
-  backendFileName :: Lens' (Options b V2 Double) String
+  renderToFile :: FilePath -> DB.BuildResult b V2 Double -> Result b V2 Double -> IO ()
+  backendFileName :: FilePath -> Options b V2 Double -> Options b V2 Double
 
 instance FileBackend Cairo where
-  renderToFile = const fst
-  backendFileName = cairoFileName
+  renderToFile _fn _br (write, _) = write
+  backendFileName = (cairoFileName .~)
+
+instance FileBackend Rasterific where
+  renderToFile outFile _br img = JP.writePng outFile img
+  backendFileName = const id
