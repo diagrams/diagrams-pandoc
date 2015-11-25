@@ -6,14 +6,14 @@
 
 module Text.Pandoc.Diagrams where
 
-
-import           Control.Lens                    ((&), (.~), (<>~))
+import           Control.Lens                    (Lens', (&), (.~), (<>~))
 import           Data.Char                       (toLower)
 import           Data.List                       (delete)
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
 import qualified Diagrams.Builder                as DB
-import           Diagrams.Prelude                (centerXY, pad)
+import           Diagrams.Prelude                (Options, Result, centerXY,
+                                                  pad)
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
@@ -87,26 +87,34 @@ compileDiagram snip = do
                 ) & DB.imports .~
                   [ "Diagrams.Backend.Cairo"
                   , "Diagrams.Backend.Cairo.Internal"
-                  ]
+                  ] & snippetBuildOpts snip
 
-                & DB.snippets .~ [_src snip]
-                & DB.imports  <>~
-                  [ -- "Diagrams.TwoD.Types"      -- WHY IS THIS NECESSARY =(
-                    -- , "Diagrams.Core.Points"
-                      -- GHC 7.2 bug?  need  V (Point R2) = R2  (see #65)
-                    "Graphics.SVGFonts"
-                  , "Data.Typeable"
-                  ]
-                & DB.pragmas .~ ["DeriveDataTypeable"]
-                & DB.diaExpr .~ _expression (_opts snip)
-                & DB.postProcess .~ (pad 1.1 . centerXY)
-                & DB.decideRegen .~ DB.hashedRegenerate
-                  (\hash opts' -> opts' { _cairoFileName = mkFile hash })
-                  (_outDir $ _opts snip)
+  handleResult snip =<< DB.buildDiagram bopts
+  where
+    dimensions = dims $ V2 (widthAttribute $ _attrs snip) (heightAttribute $ _attrs snip)
 
-  res <- DB.buildDiagram bopts
+snippetBuildOpts :: FileBackend b =>
+  Snippet -> DB.BuildOpts b V2 Double -> DB.BuildOpts b V2 Double
+snippetBuildOpts snip bopts =
+  bopts
+  & DB.snippets .~ [_src snip]
+  & DB.imports  <>~
+  [ -- "Diagrams.TwoD.Types"      -- WHY IS THIS NECESSARY =(
+    -- , "Diagrams.Core.Points"
+    -- GHC 7.2 bug?  need  V (Point R2) = R2  (see #65)
+    "Graphics.SVGFonts"
+  , "Data.Typeable"
+  ]
+  & DB.pragmas .~ ["DeriveDataTypeable"]
+  & DB.diaExpr .~ _expression (_opts snip)
+  & DB.postProcess .~ (pad 1.1 . centerXY)
+  & DB.decideRegen .~ DB.hashedRegenerate
+  (\hash -> backendFileName .~ mkFile snip hash )
+  (_outDir $ _opts snip)
 
-  case res of
+handleResult :: FileBackend b =>
+                Snippet -> DB.BuildResult b V2 Double -> IO (Maybe String)
+handleResult snip res = case res of
     DB.ParseErr err    -> do
       hPutStrLn stderr ("\nError while parsing\n" ++ _src snip)
       hPutStrLn stderr err
@@ -120,17 +128,17 @@ compileDiagram snip = do
     DB.Skipped hash    -> do
       hPutStr stderr "."
       hFlush stderr
-      return $ Just (mkFile (DB.hashToHexStr hash))
+      return $ Just (mkFile snip (DB.hashToHexStr hash))
 
     DB.OK hash out -> do
       hPutStr stderr "O"
       hFlush stderr
-      fst out
-      return $ Just (mkFile (DB.hashToHexStr hash))
+      renderToFile res out
+      return $ Just (mkFile snip (DB.hashToHexStr hash))
 
- where
-  dimensions = dims $ V2 (widthAttribute $ _attrs snip) (heightAttribute $ _attrs snip)
-  mkFile base = _outDir (_opts snip) </> base <.> (backendExt . _outFormat . _opts $ snip)
+mkFile :: Snippet -> FilePath -> FilePath
+mkFile snip base =
+  _outDir (_opts snip) </> base <.> (backendExt . _outFormat . _opts $ snip)
 
 widthAttribute :: [(String,String)] -> Double
 widthAttribute attrs =
@@ -150,3 +158,15 @@ readEcho attrs = case lookup "echo" attrs of
   Just v -> case map toLower v of
     "above" -> Above
     _ -> Below
+
+-- | Backends for which diagrams-pandoc can render a Diagram to disk
+-- with a specified filename.
+class FileBackend b where
+  -- The first argument of each is a proxy to fix the type b
+  -- Note that Result is a type alias, so doesn't fix b
+  renderToFile :: DB.BuildResult b V2 Double -> Result b V2 Double -> IO ()
+  backendFileName :: Lens' (Options b V2 Double) String
+
+instance FileBackend Cairo where
+  renderToFile = const fst
+  backendFileName = cairoFileName
