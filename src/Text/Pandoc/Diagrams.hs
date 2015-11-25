@@ -7,12 +7,13 @@
 module Text.Pandoc.Diagrams where
 
 
+import           Control.Lens                    ((&), (.~), (<>~))
 import           Data.Char                       (toLower)
 import           Data.List                       (delete)
 import           Diagrams.Backend.Cairo
 import           Diagrams.Backend.Cairo.Internal
 import qualified Diagrams.Builder                as DB
-import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
+import           Diagrams.Prelude                (centerXY, pad)
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
@@ -21,7 +22,7 @@ import           System.IO
 import           Text.Pandoc.Definition
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
+import           Control.Applicative
 #endif
 
 backendExt :: String -> String
@@ -72,26 +73,22 @@ compileDiagram opts attrs src = do
 
   let
       bopts :: DB.BuildOpts Cairo V2 Double
-      bopts = DB.mkBuildOpts
-
-                Cairo
-
-                zero
-
+      bopts = DB.mkBuildOpts Cairo zero
                 ( CairoOptions "default.png"
                   (dims $ V2 (widthAttribute attrs) (heightAttribute attrs))
                   (findOutputType $ _outFormat opts)
                   False
-                )
+                ) & DB.imports .~
+                  [ "Diagrams.Backend.Cairo"
+                  , "Diagrams.Backend.Cairo.Internal"
+                  ]
 
                 & DB.snippets .~ [src]
-                & DB.imports  .~
-                  [ "Diagrams.TwoD.Types"      -- WHY IS THIS NECESSARY =(
-                  , "Diagrams.Core.Points"
+                & DB.imports  <>~
+                  [ -- "Diagrams.TwoD.Types"      -- WHY IS THIS NECESSARY =(
+                    -- , "Diagrams.Core.Points"
                       -- GHC 7.2 bug?  need  V (Point R2) = R2  (see #65)
-                  , "Diagrams.Backend.Cairo"
-                  , "Diagrams.Backend.Cairo.Internal"
-                  , "Graphics.SVGFonts"
+                    "Graphics.SVGFonts"
                   , "Data.Typeable"
                   ]
                 & DB.pragmas .~ ["DeriveDataTypeable"]
