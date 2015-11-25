@@ -42,6 +42,12 @@ data Opts = Opts {
     _expression :: String
     }
 
+data Snippet = Snippet {
+  _opts  :: Opts,
+  _attrs :: [(String,String)],
+  _src   :: String
+  }
+
 data Echo = Above | Below
 
 insertDiagrams :: Opts -> Block -> IO [Block]
@@ -54,7 +60,7 @@ insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
     | "diagram" `elem` classes = (:[]) <$> img
   where
     img = do
-        d <- compileDiagram opts attrs code
+        d <- compileDiagram $ Snippet opts attrs code
         return $ case d of
             Nothing     -> Null  -- already reported error on stderr
             Just imgName -> Plain [Image [] (imgName,"")] -- no alt text, no title
@@ -67,23 +73,23 @@ insertDiagrams _ block = return [block]
 -- TODO clean this up, move it into -builder somehow
 -- | Compile the literate source code of a diagram to a .png/.pdf file with
 --   a file name given by a hash of the source code contents
-compileDiagram :: Opts -> [(String,String)] -> String -> IO (Maybe String)
-compileDiagram opts attrs src = do
-  ensureDir $ _outDir opts
+compileDiagram :: Snippet -> IO (Maybe String)
+compileDiagram snip = do
+  createDirectoryIfMissing True . _outDir . _opts $ snip
 
   let
       bopts :: DB.BuildOpts Cairo V2 Double
       bopts = DB.mkBuildOpts Cairo zero
                 ( CairoOptions "default.png"
-                  (dims $ V2 (widthAttribute attrs) (heightAttribute attrs))
-                  (findOutputType $ _outFormat opts)
+                  dimensions
+                  (findOutputType . _outFormat . _opts $ snip)
                   False
                 ) & DB.imports .~
                   [ "Diagrams.Backend.Cairo"
                   , "Diagrams.Backend.Cairo.Internal"
                   ]
 
-                & DB.snippets .~ [src]
+                & DB.snippets .~ [_src snip]
                 & DB.imports  <>~
                   [ -- "Diagrams.TwoD.Types"      -- WHY IS THIS NECESSARY =(
                     -- , "Diagrams.Core.Points"
@@ -92,26 +98,24 @@ compileDiagram opts attrs src = do
                   , "Data.Typeable"
                   ]
                 & DB.pragmas .~ ["DeriveDataTypeable"]
-                & DB.diaExpr .~ _expression opts
+                & DB.diaExpr .~ _expression (_opts snip)
                 & DB.postProcess .~ (pad 1.1 . centerXY)
-                & DB.decideRegen .~
-                  (DB.hashedRegenerate
-                    (\hash opts' -> opts' { _cairoFileName = mkFile hash })
-                    (_outDir opts)
-                  )
+                & DB.decideRegen .~ DB.hashedRegenerate
+                  (\hash opts' -> opts' { _cairoFileName = mkFile hash })
+                  (_outDir $ _opts snip)
 
   res <- DB.buildDiagram bopts
 
   case res of
     DB.ParseErr err    -> do
-      hPutStrLn stderr ("\nError while parsing\n" ++ src)
+      hPutStrLn stderr ("\nError while parsing\n" ++ _src snip)
       hPutStrLn stderr err
-      return $ Nothing
+      return Nothing
 
     DB.InterpErr ierr  -> do
-      hPutStrLn stderr ("\nError while interpreting\n" ++ src)
+      hPutStrLn stderr ("\nError while interpreting\n" ++ _src snip)
       hPutStrLn stderr (DB.ppInterpError ierr)
-      return $ Nothing
+      return Nothing
 
     DB.Skipped hash    -> do
       hPutStr stderr "."
@@ -125,9 +129,8 @@ compileDiagram opts attrs src = do
       return $ Just (mkFile (DB.hashToHexStr hash))
 
  where
-  mkFile base = _outDir opts </> base <.> (backendExt $ _outFormat opts)
-  ensureDir dir = do
-    createDirectoryIfMissing True dir
+  dimensions = dims $ V2 (widthAttribute $ _attrs snip) (heightAttribute $ _attrs snip)
+  mkFile base = _outDir (_opts snip) </> base <.> (backendExt . _outFormat . _opts $ snip)
 
 widthAttribute :: [(String,String)] -> Double
 widthAttribute attrs =
