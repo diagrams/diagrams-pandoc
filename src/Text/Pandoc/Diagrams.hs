@@ -6,7 +6,7 @@
 
 module Text.Pandoc.Diagrams where
 
-import           Control.Monad                   (when)
+
 import           Data.Char                       (toLower)
 import           Data.List                       (delete)
 import           Diagrams.Backend.Cairo
@@ -55,8 +55,8 @@ insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
     img = do
         d <- compileDiagram opts attrs code
         return $ case d of
-            Left _err     -> Null  -- TODO log an error here
-            Right imgName -> Plain [Image [] (imgName,"")] -- no alt text, no title
+            Nothing     -> Null  -- already reported error on stderr
+            Just imgName -> Plain [Image [] (imgName,"")] -- no alt text, no title
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
 insertDiagrams _ block = return [block]
@@ -66,7 +66,7 @@ insertDiagrams _ block = return [block]
 -- TODO clean this up, move it into -builder somehow
 -- | Compile the literate source code of a diagram to a .png/.pdf file with
 --   a file name given by a hash of the source code contents
-compileDiagram :: Opts -> [(String,String)] -> String -> IO (Either String String)
+compileDiagram :: Opts -> [(String,String)] -> String -> IO (Maybe String)
 compileDiagram opts attrs src = do
   ensureDir $ _outDir opts
 
@@ -109,23 +109,23 @@ compileDiagram opts attrs src = do
     DB.ParseErr err    -> do
       hPutStrLn stderr ("\nError while parsing\n" ++ src)
       hPutStrLn stderr err
-      return $ Left "Error while parsing"
+      return $ Nothing
 
     DB.InterpErr ierr  -> do
       hPutStrLn stderr ("\nError while interpreting\n" ++ src)
       hPutStrLn stderr (DB.ppInterpError ierr)
-      return $ Left "Error while interpreting"
+      return $ Nothing
 
     DB.Skipped hash    -> do
       hPutStr stderr "."
       hFlush stderr
-      return $ Right (mkFile (DB.hashToHexStr hash))
+      return $ Just (mkFile (DB.hashToHexStr hash))
 
     DB.OK hash out -> do
       hPutStr stderr "O"
       hFlush stderr
       fst out
-      return $ Right (mkFile (DB.hashToHexStr hash))
+      return $ Just (mkFile (DB.hashToHexStr hash))
 
  where
   mkFile base = _outDir opts </> base <.> (backendExt $ _outFormat opts)
