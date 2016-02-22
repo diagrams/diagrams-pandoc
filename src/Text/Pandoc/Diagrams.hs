@@ -56,7 +56,7 @@ insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
         d <- compileDiagram opts attrs code
         return $ case d of
             Left _err     -> Null  -- TODO log an error here
-            Right imgName -> Plain [Image [] (imgName,"")] -- no alt text, no title
+            Right imgName -> Plain [Image ("",[],[]) [] (imgName,"")] -- no alt text, no title
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
 insertDiagrams _ block = return [block]
