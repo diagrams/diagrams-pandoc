@@ -14,7 +14,7 @@ maintainer:          diagrams-discuss@googlegroups.com
 category:            Text
 build-type:          Simple
 Bug-reports:         http://github.com/diagrams/diagrams-pandoc/issues
-Extra-source-files:  README.md
+Extra-source-files:  README.md, CHANGELOG.md
 cabal-version:       >=1.10
 Tested-with:         GHC == 7.8.4, GHC == 7.10.2
 Source-repository head
