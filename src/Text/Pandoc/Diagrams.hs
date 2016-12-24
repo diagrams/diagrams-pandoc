@@ -16,7 +16,7 @@ import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
-import           System.FilePath                 ((<.>), (</>))
+import           System.FilePath                 ((<.>), (</>), pathSeparator)
 import           System.IO
 import           Text.Pandoc.Definition
 
@@ -36,15 +36,16 @@ findOutputType "latex" = PDF
 findOutputType _ = PNG
 
 data Opts = Opts {
-    _outFormat  :: String,
-    _outDir     :: FilePath,
-    _expression :: String
+    _outFormat    :: String,
+    _outDir       :: FilePath,
+    _expression   :: String,
+    _absolutePath :: Bool
     }
 
 data Echo = Above | Below
 
 insertDiagrams :: Opts -> Block -> IO [Block]
-insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
+insertDiagrams opts@(Opts _ _ _ absolutePath) (CodeBlock (ident, classes, attrs) code)
     | "diagram-haskell" `elem` classes = do
       i <- img
       return $ case echo of
@@ -56,7 +57,7 @@ insertDiagrams opts (CodeBlock (ident, classes, attrs) code)
         d <- compileDiagram opts attrs code
         return $ case d of
             Left _err     -> Null  -- TODO log an error here
-            Right imgName -> Plain [Image ("",[],[]) [] (imgName,"")] -- no alt text, no title
+            Right imgName -> Plain [Image ("",[],[]) [] (if absolutePath then pathSeparator : imgName else imgName,"")] -- no alt text, no title
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
 insertDiagrams _ block = return [block]

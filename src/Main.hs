@@ -19,6 +19,8 @@ optsParser = Opts
                             metavar "NAME" <>
                             help "name of Diagram value in Haskell snippet" <>
                             value "example")
+             <*> switch    (long "absolute" <> short 'a' <>
+                            help "output the name of Diagram in Haskell snippet as absolute path")
 
 withHelp :: ParserInfo Opts
 withHelp = info
