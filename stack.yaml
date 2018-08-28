@@ -1,5 +1,11 @@
-resolver: lts-6.27
+resolver: lts-12.7
 packages:
 - '.'
 extra-deps: []
 flags: {}
+nix:
+  packages:
+    - cairo
+    - pango
+    - pkgconfig
+    - zlib
