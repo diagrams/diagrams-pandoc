@@ -1,3 +1,4 @@
+-- {-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE GADTs                     #-}
@@ -16,7 +17,7 @@ import           Data.Data.Lens
 import           Data.Foldable               (foldMap)
 import           Data.List                   (delete)
 import           Data.Maybe
-import           Diagrams.Backend.Build
+import           Diagrams.Backend
 import           Diagrams.Builder            as DB
 import           Diagrams.Prelude            hiding (block)
 import           System.FilePath
@@ -24,6 +25,8 @@ import           System.IO
 import           Text.Pandoc.Generic
 import           Text.Pandoc.JSON
 import           Text.Read
+
+import Diagrams.Builder.Opts
 
 import           Diagrams.Backend.PGF
 import           Diagrams.Backend.Rasterific
@@ -51,23 +54,22 @@ pandocFilter f mf (Pandoc m bs) = Pandoc m `liftM` walkM' (f m mf) bs
 -- | An ad-hoc filter to build a diagram from a block. Putting them in a
 -- hetrogeneous container like this allows multiple backends to be used
 -- in a single document.
-data BackendFilter = forall b v n. (BackendBuild b v n, Read n, Num n) => BackendFilter
+data BackendFilter = forall b. BackendBuild b => BackendFilter
   { nameMatch   :: String -> Bool  -- matches name of backend
   , formatMatch :: Format -> Bool  -- matches format
-  , defaultOpts :: Options b v n   -- default options to use
-  , filterBuild :: Maybe Format -> BuildOpts b v n -> Attr -> String -> IO Block
+  , defaultOpts :: Options b       -- default options to use
+  , filterBuild :: Maybe Format -> DiaBuildOpts -> Attr -> String -> IO Block
                                    -- Function to build diagram
   }
 
-type OptsAdjust = forall b v n. BackendBuild b v n
-                             => BuildOpts b v n -> BuildOpts b v n
+type OptsAdjust = DiaBuildOpts -> DiaBuildOpts
 
 -- | Filters for 'Rasterific', 'SVG' and 'PGF' backends. Any other
 -- modules included by CPP will also be in this list. Rasterific is the
 -- first in the list so it will be used as fallback if no backend or
 -- 'Format' is found.
-defaultFilters :: [BackendFilter]
-defaultFilters = [rasterificFilter, svgFilter, pgfFilter]
+-- defaultFilters :: [BackendFilter]
+-- defaultFilters = [rasterificFilter, svgFilter, pgfFilter]
 
 -- | Filter for turning 'CodeBlock's into diagrams using a list of
 --   'BackendFilter's. If no filters are given the pandoc output will
@@ -105,30 +107,37 @@ defaultFilters = [rasterificFilter, svgFilter, pgfFilter]
 --     ``` {.diagram backend=Rasterific width=300}
 --     diagram = triangle 2 # fc yellow
 --     @@
-backendFilter :: MonadIO m => OptsAdjust -> [BackendFilter] -> Meta -> Maybe Format -> Block -> m [Block]
-backendFilter optsAdjust filters meta@(Meta m) mf (CodeBlock attrs@(bId, classes, keys) code)
-  | "diagram"      `elem` classes = mkDiagram
-  | "diagram-code" `elem` classes = (++ codeBlock) `liftM` mkDiagram
-  | "code-diagram" `elem` classes = (codeBlock ++) `liftM` mkDiagram
-  where
-    mkDiagram = liftIO $ case backend of
-      Just (BackendFilter _ _ opts f) ->
-        let bOpts = mkBuildOpts undefined undefined opts
-                      & keysOptsAlter meta attrs
-                      & optsAdjust
-        in  pure `liftM` f mf bOpts attrs code
-      Nothing -> return [code_ "A diagram should be here but no backend filters where found."]
+backendFilter
+  :: MonadIO m
+  => OptsAdjust
+  -> [BackendFilter]
+  -> Meta
+  -> Maybe Format
+  -> Block
+  -> m [Block]
+-- backendFilter optsAdjust filters meta@(Meta m) mf (CodeBlock attrs@(bId, classes, keys) code)
+--   | "diagram"      `elem` classes = mkDiagram
+--   | "diagram-code" `elem` classes = (++ codeBlock) `liftM` mkDiagram
+--   | "code-diagram" `elem` classes = (codeBlock ++) `liftM` mkDiagram
+--   where
+--     mkDiagram = liftIO $ case backend of
+--       Just (BackendFilter _ _ opts f) ->
+--         let bOpts = mkBuildOpts undefined undefined opts
+--                       & keysOptsAlter meta attrs
+--                       & optsAdjust
+--         in  pure `liftM` f mf bOpts attrs code
+--       Nothing -> return [code_ "A diagram should be here but no backend filters where found."]
 
-    codeBlock = [CodeBlock (bId, rmCode classes, keys) code]
-    rmCode    = cons "haskell" . delete "diagram-code" . delete "code-diagram"
-    backend   = test nameMatch bName <|> test formatMatch mf <|> listToMaybe filters
-    -- try to match names or formats, use head as fallback
-    bName     = map toLower
-            <$> lookup "backend" keys
-            <|> m ^? foldMap ix ["default-backend", "diagrams-backend", "backend"] . template
-    -- query filters for the first match
-    test :: (BackendFilter -> a -> Bool) -> Maybe a -> Maybe BackendFilter
-    test f ma = ma >>= \a -> listToMaybe $ filter (`f` a) filters
+--     codeBlock = [CodeBlock (bId, rmCode classes, keys) code]
+--     rmCode    = cons "haskell" . delete "diagram-code" . delete "code-diagram"
+--     backend   = test nameMatch bName <|> test formatMatch mf <|> listToMaybe filters
+--     -- try to match names or formats, use head as fallback
+--     bName     = map toLower
+--             <$> lookup "backend" keys
+--             <|> m ^? foldMap ix ["default-backend", "diagrams-backend", "backend"] . template
+--     -- query filters for the first match
+--     test :: (BackendFilter -> a -> Bool) -> Maybe a -> Maybe BackendFilter
+--     test f ma = ma >>= \a -> listToMaybe $ filter (`f` a) filters
 backendFilter _ _ _ _ b = return [b]
 
 -- | Alter the 'BuildOpts' using the document's 'Meta' and the code
@@ -164,30 +173,29 @@ backendFilter _ _ _ _ b = return [b]
 --     Rest of markdown document.
 --     @@
 --
-keysOptsAlter :: (Read n, Num n, BackendBuild b v n)
-              => Meta -> Attr -> BuildOpts b v n -> BuildOpts b v n
-keysOptsAlter (Meta m) (_ident, classes, keys) b =
-  b & case (lookupRead "width" keys, lookupRead "height" keys) of
-        (Just w, Just h)  -> buildSize .~ dims2D w h
-        (Just w, Nothing) -> buildSize .~ mkWidth w
-        (Nothing, Just h) -> buildSize .~ mkHeight h
-        _                 -> id
-    & whenever ("absolute" `elem` classes) (buildSize .~ absolute)
-    & whenever ("no-post-process" `elem` classes) (postProcess .~ id)
-    & maybe id (set diaExpr) expr
-    & imports <>~ extraMods
-  where
-    extraMods = m ^.. (ix "extra-diagrams-modules" <> ix "extra-modules") . template
+-- keysOptsAlter :: Meta -> Attr -> DiaBuildOpts -> DiaBuildOpts
+-- keysOptsAlter (Meta m) (_ident, classes, keys) b =
+--   b & case (lookupRead "width" keys, lookupRead "height" keys) of
+--         (Just w, Just h)  -> buildSize .~ dims2D w h
+--         (Just w, Nothing) -> buildSize .~ mkWidth w
+--         (Nothing, Just h) -> buildSize .~ mkHeight h
+--         _                 -> id
+--     & whenever ("absolute" `elem` classes) (buildSize .~ absolute)
+--     & whenever ("no-post-process" `elem` classes) (postProcess .~ id)
+--     & maybe id (set diaExpr) expr
+--     & imports <>~ extraMods
+--   where
+--     extraMods = m ^.. (ix "extra-diagrams-modules" <> ix "extra-modules") . template
 
-    expr = lookup "diagram-expression" keys
-       <|> m ^? ix "diagram-expression" . template
+--     expr = lookup "diagram-expression" keys
+--        <|> m ^? ix "diagram-expression" . template
 
 ------------------------------------------------------------------------
 -- Pandoc building
 ------------------------------------------------------------------------
 
 image_ :: String -> String -> FilePath -> Block
-image_ inline title path = Para [Image [Str inline] (path, title)]
+image_ inline title path = Para [Image nullAttr [Str inline] (path, title)]
 
 latexInput_ :: String -> Block
 latexInput_ path = RawBlock "latex" ("\\input{" ++ path ++ "}")
@@ -208,95 +216,95 @@ handleError d b = case d of
 -- PGF
 ------------------------------------------------------------------------
 
-pgfFilter :: BackendFilter
-pgfFilter = BackendFilter
-  { nameMatch   = (`elem` ["pgf", "portable-graphics-format"])
-  , formatMatch = (`elem` ["latex", "context", "pdf"])
-  , defaultOpts = with & outputSize .~ defaultSize
-  , filterBuild = addDiagramPgf
-  }
+-- pgfFilter :: BackendFilter
+-- pgfFilter = BackendFilter
+--   { nameMatch   = (`elem` ["pgf", "portable-graphics-format"])
+--   , formatMatch = (`elem` ["latex", "context", "pdf"])
+--   , defaultOpts = with & outputSize .~ defaultSize
+--   , filterBuild = addDiagramPgf
+--   }
 
-pgfBuildOpts :: BuildOpts PGF V2 Double
-pgfBuildOpts = mkBuildOpts PGF zero with
-                 & diaExpr   .~ "example"
-                 & hashCache ?~ "diagrams"
-                 & buildSize .~ defaultSize
-                 & imports   .~ [ "Diagrams.Backend.PGF"
-                                , "Diagrams.Prelude"
-                                ]
+-- pgfBuildOpts :: BuildOpts PGF V2 Double
+-- pgfBuildOpts = mkBuildOpts PGF zero with
+--                  & diaExpr   .~ "example"
+--                  & hashCache ?~ "diagrams"
+--                  & buildSize .~ defaultSize
+--                  & imports   .~ [ "Diagrams.Backend.PGF"
+--                                 , "Diagrams.Prelude"
+--                                 ]
 
-addDiagramPgf :: Maybe Format -> BuildOpts PGF V2 Double -> Attr -> String -> IO Block
-addDiagramPgf mf opts_ ats code =
-  case mf of
-    Just (Format "latex") -> do
-      d <- compileDiagram opts code "tex"
-      handleError d latexInput_
+-- addDiagramPgf :: Maybe Format -> BuildOpts PGF V2 Double -> Attr -> String -> IO Block
+-- addDiagramPgf mf opts_ ats code =
+--   case mf of
+--     Just (Format "latex") -> do
+--       d <- compileDiagram opts code "tex"
+--       handleError d latexInput_
 
-    Just (Format "context") -> do
-      d <- compileDiagram (opts & backendOpts . surface .~ contextSurface) code "tex"
-      handleError d latexInput_
+--     Just (Format "context") -> do
+--       d <- compileDiagram (opts & backendOpts . surface .~ contextSurface) code "tex"
+--       handleError d latexInput_
 
-    _ -> do
-      d <- compileDiagram opts code "pdf"
-      handleError d $ image_ (ats^._1) "diagram"
-  where
-    opts = opts_ & imports <>~ ["Diagrams.Backend.PGF"]
+--     _ -> do
+--       d <- compileDiagram opts code "pdf"
+--       handleError d $ image_ (ats^._1) "diagram"
+--   where
+--     opts = opts_ & imports <>~ ["Diagrams.Backend.PGF"]
 
 ------------------------------------------------------------------------
 -- SVG
 ------------------------------------------------------------------------
 
-svgFilter :: BackendFilter
-svgFilter = BackendFilter
-  { nameMatch   = (`elem` ["svg"])
-  , formatMatch = (`elem` ["html", "md", "markdown"])
-  , defaultOpts = SVGOptions defaultSize []
-  , filterBuild = addDiagramSVG
-  }
+-- svgFilter :: BackendFilter
+-- svgFilter = BackendFilter
+--   { nameMatch   = (`elem` ["svg"])
+--   , formatMatch = (`elem` ["html", "md", "markdown"])
+--   , defaultOpts = SVGOptions defaultSize []
+--   , filterBuild = addDiagramSVG
+--   }
 
-svgBuildOpts :: BuildOpts SVG V2 Double
-svgBuildOpts = mkBuildOpts SVG zero (SVGOptions defaultSize [])
-                 & diaExpr   .~ "example"
-                 & hashCache ?~ "diagrams"
-                 & imports   .~ [ "Diagrams.Backend.SVG"
-                                , "Diagrams.Prelude"
-                                ]
+-- svgBuildOpts :: BuildOpts SVG V2 Double
+-- svgBuildOpts = mkBuildOpts SVG zero (SVGOptions defaultSize [])
+--                  & diaExpr   .~ "example"
+--                  & hashCache ?~ "diagrams"
+--                  & imports   .~ [ "Diagrams.Backend.SVG"
+--                                 , "Diagrams.Prelude"
+--                                 ]
 
-addDiagramSVG :: Maybe Format -> BuildOpts SVG V2 Double -> Attr -> String -> IO Block
-addDiagramSVG _ opts_ ats code = do
-  d <- compileDiagram opts code "svg"
-  handleError d $ image_ (ats^._1) "diagram"
-  where
-    opts = opts_ & imports <>~ ["Diagrams.Backend.SVG"]
+-- addDiagramSVG :: Maybe Format -> BuildOpts SVG V2 Double -> Attr -> String -> IO Block
+-- addDiagramSVG _ opts_ ats code = do
+--   d <- compileDiagram opts code "svg"
+--   handleError d $ image_ (ats^._1) "diagram"
+--   where
+--     opts = opts_ & imports <>~ ["Diagrams.Backend.SVG"]
 
 ------------------------------------------------------------------------
 -- Rasterific
 ------------------------------------------------------------------------
 
-type Raster = Rasterific
+-- type Raster = Rasterific
 
-rasterificFilter :: BackendFilter
-rasterificFilter = BackendFilter
-  { nameMatch   = (`elem` ["rasterific", "raster"])
-  , formatMatch = const False -- Rasterific is the fallback (so first in list)
-  , defaultOpts = RasterificOptions defaultSize
-  , filterBuild = addDiagramRasterific
-  }
+-- rasterificFilter :: BackendFilter
+-- rasterificFilter = BackendFilter
+--   { nameMatch   = (`elem` ["rasterific", "raster"])
+--   , formatMatch = const False -- Rasterific is the fallback (so first in list)
+--   , defaultOpts = RasterificOptions defaultSize
+--   , filterBuild = addDiagramRasterific
+--   }
 
-rasterificBuildOpts :: BuildOpts Raster V2 Float
-rasterificBuildOpts = mkBuildOpts Rasterific zero (RasterificOptions defaultSize)
-                 & diaExpr   .~ "example"
-                 & hashCache ?~ "diagrams"
-                 & imports   .~ [ "Diagrams.Backend.Rasterific"
-                                , "Diagrams.Prelude"
-                                ]
+-- rasterificBuildOpts :: DiaBuildOpts
+-- rasterificBuildOpts = mkBuildOpts Rasterific zero (RasterificOptions defaultSize)
+--                  & diaExpr   .~ "example"
+--                  & hashCache ?~ "diagrams"
+--                  & imports   .~ [ "Diagrams.Backend.Rasterific"
+--                                 , "Diagrams.Prelude"
+--                                 ]
 
-addDiagramRasterific :: Maybe Format -> BuildOpts Rasterific V2 Float -> Attr -> String -> IO Block
-addDiagramRasterific _ opts_ ats code = do
-  d <- compileDiagram opts code "png"
-  handleError d $ image_ (ats^._1) "diagram"
-  where
-    opts = opts_ & imports <>~ ["Diagrams.Backend.Rasterific"]
+-- addDiagramRasterific :: Maybe Format -> BuildOpts Rasterific V2 Float -> Attr -> String -> IO Block
+-- addDiagramRasterific _ opts_ ats code = do
+--   d <- compileDiagram opts code "png"
+--   handleError d $ image_ (ats^._1) "diagram"
+--   where
+--     opts = opts_ & imports <>~ ["Diagrams.Backend.Rasterific"]
 
 ------------------------------------------------------------------------
 -- Utilities
@@ -306,7 +314,7 @@ addDiagramRasterific _ opts_ ats code = do
 --   a diagram to a file with a file name given by a hash of the source
 --   code contents. Returns the path to the result or an interpretor /
 --   compiler error.
-compileDiagram :: BackendBuild' b v n => BuildOpts b v n -> String -> String -> IO (Either String FilePath)
+compileDiagram :: DiaBuildOpts -> String -> String -> IO (Either String FilePath)
 compileDiagram opts src ext = do
   r <- buildDiaToHash (opts & snippets %~ (++ [src])) ext
   let mkPath h = (opts ^. hashCache . _Just) </> showHash h <.> ext
@@ -322,5 +330,5 @@ lookupRead a = lookup a >=> readMaybe
 whenever :: Bool -> (a -> a) -> a -> a
 whenever b f = if b then f else id
 
-buildSize :: BackendBuild b v n => Lens' (BuildOpts b v n) (SizeSpec V2 n)
-buildSize = backendOpts . outputSize
+-- buildSize :: Lens' DiaBuildOpts (SizeSpec V2 Int)
+-- buildSize = backendOpts . diaOutputSize
