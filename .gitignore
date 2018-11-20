@@ -1,6 +1,5 @@
-\#*
-.#*
 dist
+dist-newstyle
 cabal-dev
 *.o
 *.hi
@@ -12,6 +11,9 @@ cabal-dev
 dist_*
 history
 TAGS
-.diagrams-cache
-/cabal.sandbox.config
-/.cabal-sandbox/
+cabal.project.local
+.cabal-sandbox/
+cabal.sandbox.config
+.stack-work/
+codex.tags
+.ghc.environment.*
