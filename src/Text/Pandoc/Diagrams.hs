@@ -1,4 +1,9 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | Convert appropriately annotated Code blocks to an image, with or
 -- without display of the code.  Interpret the Code blocks as Haskell
@@ -6,12 +11,12 @@
 
 module Text.Pandoc.Diagrams where
 
-import           Control.Monad                   (when)
 import           Data.Char                       (toLower)
 import           Data.List                       (delete)
-import           Diagrams.Backend.Cairo
-import           Diagrams.Backend.Cairo.Internal
+import qualified Diagrams.Backend.Cairo.Internal as BCairo
+import qualified Diagrams.Backend.SVG            as BSvg
 import qualified Diagrams.Builder                as DB
+import qualified Diagrams.Core                   as DC
 import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
 import           Diagrams.Size                   (dims)
 import           Linear                          (V2 (..), zero)
@@ -19,33 +24,41 @@ import           System.Directory                (createDirectoryIfMissing)
 import           System.FilePath                 ((<.>), (</>), pathSeparator)
 import           System.IO
 import           Text.Pandoc.Definition
+import           Data.Typeable                   (Typeable)
+import           Data.Hashable                   (Hashable)
+import qualified Graphics.Svg                    as Svg
 
 #if __GLASGOW_HASKELL__ < 710
 import Control.Applicative
 #endif
 
-backendExt :: String -> String
-backendExt "beamer" = "pdf"
-backendExt "latex" = "pdf"
-backendExt _ = "png"
+backendExt :: Opts -> String
+backendExt Opts {_backend = SVG, ..} = "svg"
+backendExt Opts {_backend = Cairo, ..} = case _outFormat of
+  "beamer" -> "pdf"
+  "latex"  -> "pdf"
+  _        -> "png"
 
 -- Return output type for a string
-findOutputType :: String -> OutputType
-findOutputType "beamer" = PDF
-findOutputType "latex" = PDF
-findOutputType _ = PNG
+findCairoOutputType :: String -> BCairo.OutputType
+findCairoOutputType "beamer" = BCairo.PDF
+findCairoOutputType "latex" = BCairo.PDF
+findCairoOutputType _ = BCairo.PNG
 
 data Opts = Opts {
     _outFormat    :: String,
     _outDir       :: FilePath,
     _expression   :: String,
-    _absolutePath :: Bool
+    _absolutePath :: Bool,
+    _backend      :: Backend
     }
+
+data Backend = Cairo | SVG deriving (Read)
 
 data Echo = Above | Below
 
 insertDiagrams :: Opts -> Block -> IO [Block]
-insertDiagrams opts@(Opts _ _ _ absolutePath) (CodeBlock (ident, classes, attrs) code)
+insertDiagrams opts@Opts{..} (CodeBlock (ident, classes, attrs) code)
     | "diagram-haskell" `elem` classes = do
       i <- img
       return $ case echo of
@@ -57,7 +70,7 @@ insertDiagrams opts@(Opts _ _ _ absolutePath) (CodeBlock (ident, classes, attrs)
         d <- compileDiagram opts attrs code
         return $ case d of
             Left _err     -> Null  -- TODO log an error here
-            Right imgName -> Plain [Image ("",[],[]) [] (if absolutePath then pathSeparator : imgName else imgName,"")] -- no alt text, no title
+            Right imgName -> Plain [Image ("",[],[]) [] (if _absolutePath then pathSeparator : imgName else imgName,"")] -- no alt text, no title
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
 insertDiagrams _ block = return [block]
@@ -70,68 +83,92 @@ insertDiagrams _ block = return [block]
 compileDiagram :: Opts -> [(String,String)] -> String -> IO (Either String String)
 compileDiagram opts attrs src = do
   ensureDir $ _outDir opts
+  case mkBuildOpts opts attrs src of
+    SomeBuildOpts bo -> do
+      res <- DB.buildDiagram bo
+      case res of
+        DB.ParseErr err    -> do
+          hPutStrLn stderr ("\nError while parsing\n" ++ src)
+          hPutStrLn stderr err
+          return $ Left "Error while parsing"
 
-  let
-      bopts :: DB.BuildOpts Cairo V2 Double
-      bopts = DB.mkBuildOpts
+        DB.InterpErr ierr  -> do
+          hPutStrLn stderr ("\nError while interpreting\n" ++ src)
+          hPutStrLn stderr (DB.ppInterpError ierr)
+          return $ Left "Error while interpreting"
 
-                Cairo
+        DB.Skipped hash    -> do
+          hPutStr stderr "."
+          hFlush stderr
+          return $ Right (mkFile opts (DB.hashToHexStr hash))
 
-                zero
+        DB.OK hash out -> do
+          hPutStr stderr "O"
+          hFlush stderr
+          let path = mkFile opts (DB.hashToHexStr hash)
+          handleResult path $ SomeResult out
+          return $ Right path
+  where
+    ensureDir = createDirectoryIfMissing True
+    handleResult path (SomeResult a) = mkImage path a
 
-                ( CairoOptions "default.png"
-                  (dims $ V2 (widthAttribute attrs) (heightAttribute attrs))
-                  (findOutputType $ _outFormat opts)
-                  False
-                )
+mkFile :: Opts -> FilePath -> FilePath
+mkFile opts base = _outDir opts </> base <.> backendExt opts
 
-                & DB.snippets .~ [src]
-                & DB.imports  .~
-                  [ "Diagrams.TwoD.Types"      -- WHY IS THIS NECESSARY =(
-                  , "Diagrams.Core.Points"
-                      -- GHC 7.2 bug?  need  V (Point R2) = R2  (see #65)
-                  , "Diagrams.Backend.Cairo"
-                  , "Diagrams.Backend.Cairo.Internal"
-                  , "Graphics.SVGFonts"
-                  , "Data.Typeable"
-                  ]
-                & DB.pragmas .~ ["DeriveDataTypeable"]
-                & DB.diaExpr .~ _expression opts
-                & DB.postProcess .~ (pad 1.1 . centerXY)
-                & DB.decideRegen .~
-                  (DB.hashedRegenerate
-                    (\hash opts' -> opts' { _cairoFileName = mkFile hash })
-                    (_outDir opts)
-                  )
+data SomeResult = forall r. (MkImage r) => SomeResult r
 
-  res <- DB.buildDiagram bopts
+data SomeBuildOpts v n =
+  forall a. (Typeable a, DC.Backend a v n, Hashable (DC.Options a v n), MkImage (DC.Result a v n))
+  => SomeBuildOpts (DB.BuildOpts a v n)
 
-  case res of
-    DB.ParseErr err    -> do
-      hPutStrLn stderr ("\nError while parsing\n" ++ src)
-      hPutStrLn stderr err
-      return $ Left "Error while parsing"
+class MkImage a where
+  mkImage :: FilePath -> a -> IO ()
 
-    DB.InterpErr ierr  -> do
-      hPutStrLn stderr ("\nError while interpreting\n" ++ src)
-      hPutStrLn stderr (DB.ppInterpError ierr)
-      return $ Left "Error while interpreting"
+instance MkImage (IO (), r) where
+  mkImage _ = fst
 
-    DB.Skipped hash    -> do
-      hPutStr stderr "."
-      hFlush stderr
-      return $ Right (mkFile (DB.hashToHexStr hash))
+instance MkImage Svg.Element where
+  mkImage path e = writeFile path $ show e
 
-    DB.OK hash out -> do
-      hPutStr stderr "O"
-      hFlush stderr
-      fst out
-      return $ Right (mkFile (DB.hashToHexStr hash))
-
- where
-  mkFile base = _outDir opts </> base <.> (backendExt $ _outFormat opts)
-  ensureDir dir = do
-    createDirectoryIfMissing True dir
+mkBuildOpts :: Opts -> [(String, String)] -> String -> SomeBuildOpts V2 Double
+mkBuildOpts opts attrs src = case _backend opts of
+  Cairo -> SomeBuildOpts $ DB.mkBuildOpts BCairo.Cairo zero
+    ( BCairo.CairoOptions "default.png"
+      (dims $ V2 (widthAttribute attrs) (heightAttribute attrs))
+      (findCairoOutputType $ _outFormat opts)
+      False
+    )
+    & DB.snippets .~ [src]
+    & DB.imports  .~
+      [ "Diagrams.TwoD.Types" -- WHY IS THIS NECESSARY =(
+      , "Diagrams.Core.Points" -- GHC 7.2 bug?  need  V (Point R2) = R2  (see #65)
+      , "Diagrams.Backend.Cairo"
+      , "Diagrams.Backend.Cairo.Internal"
+      , "Graphics.SVGFonts"
+      , "Data.Typeable"
+      ]
+    & DB.pragmas .~ ["DeriveDataTypeable"]
+    & DB.diaExpr .~ _expression opts
+    & DB.postProcess .~ postProcess
+    & DB.decideRegen .~
+      DB.hashedRegenerate
+        (\hash opts' -> opts' { BCairo._cairoFileName = mkFile opts hash })
+        (_outDir opts)
+  SVG -> SomeBuildOpts $ DB.mkBuildOpts BSvg.SVG zero
+    (BSvg.SVGOptions (dims $ V2 (widthAttribute attrs) (heightAttribute attrs)) Nothing "" [] True)
+    & DB.snippets .~ [src]
+    & DB.imports  .~
+      [ "Diagrams.TwoD.Types"
+      , "Diagrams.Core.Points"
+      , "Diagrams.Backend.SVG"
+      , "Graphics.SVGFonts"
+      , "Data.Typeable"
+      ]
+    & DB.pragmas .~ ["DeriveDataTypeable"]
+    & DB.diaExpr .~ _expression opts
+    & DB.postProcess .~ postProcess
+  where
+    postProcess = pad 1.1 . centerXY
 
 widthAttribute :: [(String,String)] -> Double
 widthAttribute attrs =
@@ -151,3 +188,4 @@ readEcho attrs = case lookup "echo" attrs of
   Just v -> case map toLower v of
     "above" -> Above
     _ -> Below
+

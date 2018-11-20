@@ -21,6 +21,7 @@ optsParser = Opts
                             value "example")
              <*> switch    (long "absolute" <> short 'a' <>
                             help "output the name of Diagram in Haskell snippet as absolute path")
+             <*> option auto (long "backend" <> short 'b' <> metavar "BACKEND" <> value Cairo)
 
 withHelp :: ParserInfo Opts
 withHelp = info
