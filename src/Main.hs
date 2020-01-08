@@ -2,6 +2,7 @@ module Main where
 
 import           Text.Pandoc.Diagrams
 
+import           Data.Monoid
 import           Options.Applicative
 import           Text.Pandoc.JSON
 
