@@ -1,9 +1,8 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE RecordWildCards           #-}
 
 -- | Convert appropriately annotated Code blocks to an image, with or
 -- without display of the code.  Interpret the Code blocks as Haskell
@@ -11,26 +10,23 @@
 
 module Text.Pandoc.Diagrams where
 
-import           Data.Char                       (toLower)
+import           Data.Hashable                   (Hashable)
 import           Data.List                       (delete)
+import           Data.Text                       (Text)
+import qualified Data.Text                       as T
+import           Data.Typeable                   (Typeable)
 import qualified Diagrams.Backend.Cairo.Internal as BCairo
 import qualified Diagrams.Backend.SVG            as BSvg
 import qualified Diagrams.Builder                as DB
 import qualified Diagrams.Core                   as DC
 import           Diagrams.Prelude                (centerXY, pad, (&), (.~))
 import           Diagrams.Size                   (dims)
+import qualified Graphics.Svg                    as Svg
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
-import           System.FilePath                 ((<.>), (</>), pathSeparator)
+import           System.FilePath                 (pathSeparator, (<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
-import           Data.Typeable                   (Typeable)
-import           Data.Hashable                   (Hashable)
-import qualified Graphics.Svg                    as Svg
-
-#if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
-#endif
 
 backendExt :: Opts -> String
 backendExt Opts {_backend = SVG, ..} = "svg"
@@ -42,8 +38,8 @@ backendExt Opts {_backend = Cairo, ..} = case _outFormat of
 -- Return output type for a string
 findCairoOutputType :: String -> BCairo.OutputType
 findCairoOutputType "beamer" = BCairo.PDF
-findCairoOutputType "latex" = BCairo.PDF
-findCairoOutputType _ = BCairo.PNG
+findCairoOutputType "latex"  = BCairo.PDF
+findCairoOutputType _        = BCairo.PNG
 
 data Opts = Opts {
     _outFormat    :: String,
@@ -70,7 +66,10 @@ insertDiagrams opts@Opts{..} (CodeBlock (ident, classes, attrs) code)
         d <- compileDiagram opts attrs code
         return $ case d of
             Left _err     -> Null  -- TODO log an error here
-            Right imgName -> Plain [Image ("",[],[]) [] (if _absolutePath then pathSeparator : imgName else imgName,"")] -- no alt text, no title
+            Right imgName -> Plain
+              [Image ("",[],[]) []
+                 (if _absolutePath then T.cons pathSeparator imgName else imgName,"")
+              ] -- no alt text, no title
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
 insertDiagrams _ block = return [block]
@@ -80,7 +79,7 @@ insertDiagrams _ block = return [block]
 -- TODO clean this up, move it into -builder somehow
 -- | Compile the literate source code of a diagram to a .png/.pdf file with
 --   a file name given by a hash of the source code contents
-compileDiagram :: Opts -> [(String,String)] -> String -> IO (Either String String)
+compileDiagram :: Opts -> [(Text,Text)] -> Text -> IO (Either String Text)
 compileDiagram opts attrs src = do
   ensureDir $ _outDir opts
   case mkBuildOpts opts attrs src of
@@ -88,26 +87,26 @@ compileDiagram opts attrs src = do
       res <- DB.buildDiagram bo
       case res of
         DB.ParseErr err    -> do
-          hPutStrLn stderr ("\nError while parsing\n" ++ src)
+          hPutStrLn stderr ("\nError while parsing\n" ++ T.unpack src)
           hPutStrLn stderr err
           return $ Left "Error while parsing"
 
         DB.InterpErr ierr  -> do
-          hPutStrLn stderr ("\nError while interpreting\n" ++ src)
+          hPutStrLn stderr ("\nError while interpreting\n" ++ T.unpack src)
           hPutStrLn stderr (DB.ppInterpError ierr)
           return $ Left "Error while interpreting"
 
         DB.Skipped hash    -> do
           hPutStr stderr "."
           hFlush stderr
-          return $ Right (mkFile opts (DB.hashToHexStr hash))
+          return $ Right (T.pack $ mkFile opts (DB.hashToHexStr hash))
 
         DB.OK hash out -> do
           hPutStr stderr "O"
           hFlush stderr
           let path = mkFile opts (DB.hashToHexStr hash)
           handleResult path $ SomeResult out
-          return $ Right path
+          return $ Right (T.pack path)
   where
     ensureDir = createDirectoryIfMissing True
     handleResult path (SomeResult a) = mkImage path a
@@ -130,7 +129,7 @@ instance MkImage (IO (), r) where
 instance MkImage Svg.Element where
   mkImage path e = writeFile path $ show e
 
-mkBuildOpts :: Opts -> [(String, String)] -> String -> SomeBuildOpts V2 Double
+mkBuildOpts :: Opts -> [(Text, Text)] -> Text -> SomeBuildOpts V2 Double
 mkBuildOpts opts attrs src = case _backend opts of
   Cairo -> SomeBuildOpts $ DB.mkBuildOpts BCairo.Cairo zero
     ( BCairo.CairoOptions "default.png"
@@ -138,7 +137,7 @@ mkBuildOpts opts attrs src = case _backend opts of
       (findCairoOutputType $ _outFormat opts)
       False
     )
-    & DB.snippets .~ [src]
+    & DB.snippets .~ [T.unpack src]
     & DB.imports  .~
       [ "Diagrams.TwoD.Types" -- WHY IS THIS NECESSARY =(
       , "Diagrams.Core.Points" -- GHC 7.2 bug?  need  V (Point R2) = R2  (see #65)
@@ -156,7 +155,7 @@ mkBuildOpts opts attrs src = case _backend opts of
         (_outDir opts)
   SVG -> SomeBuildOpts $ DB.mkBuildOpts BSvg.SVG zero
     (BSvg.SVGOptions (dims $ V2 (widthAttribute attrs) (heightAttribute attrs)) Nothing "" [] True)
-    & DB.snippets .~ [src]
+    & DB.snippets .~ [T.unpack src]
     & DB.imports  .~
       [ "Diagrams.TwoD.Types"
       , "Diagrams.Core.Points"
@@ -170,22 +169,22 @@ mkBuildOpts opts attrs src = case _backend opts of
   where
     postProcess = pad 1.1 . centerXY
 
-widthAttribute :: [(String,String)] -> Double
+widthAttribute :: [(Text,Text)] -> Double
 widthAttribute attrs =
     case lookup "width" attrs of
         Nothing -> 500
-        Just v  -> read v :: Double
+        Just v  -> read (T.unpack v) :: Double
 
-heightAttribute :: [(String,String)] -> Double
+heightAttribute :: [(Text,Text)] -> Double
 heightAttribute attrs =
     case lookup "height" attrs of
         Nothing -> 200
-        Just v  -> read v :: Double
+        Just v  -> read (T.unpack v) :: Double
 
-readEcho :: [(String, String)] -> Echo
+readEcho :: [(Text, Text)] -> Echo
 readEcho attrs = case lookup "echo" attrs of
   Nothing -> Below
-  Just v -> case map toLower v of
+  Just v -> case T.toLower v of
     "above" -> Above
-    _ -> Below
+    _       -> Below
 

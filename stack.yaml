@@ -1,11 +1,11 @@
-resolver: lts-12.7
+resolver: lts-15.13
 packages:
 - '.'
-extra-deps: []
-flags: {}
-nix:
-  packages:
-    - cairo
-    - pango
-    - pkgconfig
-    - zlib
+extra-deps:
+  - diagrams-builder-0.8.0.5
+  - diagrams-cairo-1.4.1.1
+  - haskell-src-exts-simple-1.22.0.0
+  - cairo-0.13.8.0
+  - pango-0.13.8.0
+  - gtk2hs-buildtools-0.13.8.0
+  - glib-0.13.8.0
