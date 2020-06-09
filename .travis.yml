@@ -5,7 +5,8 @@ env:
     - GHCVER=8.2.2 CABALVER=2.0
     - GHCVER=8.4.3 CABALVER=2.2
     - GHCVER=8.6.5 CABALVER=2.4
-    - GHCVER=8.8.1 CABALVER=3.0
+    - GHCVER=8.8.3 CABALVER=3.0
+    - GHCVER=8.10.1 CABALVER=3.2
     - GHCVER=head CABALVER=head
   global:
     - UBUNTU_PKGS="libgtk-3-dev libcairo2-dev"
