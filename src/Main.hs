@@ -1,6 +1,12 @@
+{-# LANGUAGE CPP #-}
+
 module Main where
 
 import           Text.Pandoc.Diagrams
+
+#if !MIN_VERSION_BASE(4,11,0)
+import           Data.Monoid
+#endif
 
 import           Options.Applicative
 import           Text.Pandoc.JSON
