@@ -1,7 +1,9 @@
-## v0.3.0.1 (2016-10-26)
+## v0.3.1 (2020-06-11)
 
-  - Allow `diagrams-lib-1.4` and `diagrams-cairo-1.4`
-  - Allow `diagrams-builder-0.8`
+  - New `-a` option for outputting an absolute path
+  - New `-b` option for choosing backend, and add SVG support
+  - Relax many upper bounds
+  - Update to pandoc-types-1.20
 
 ## v0.3 (2016-02-23)
 
