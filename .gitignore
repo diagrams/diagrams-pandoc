@@ -19,3 +19,4 @@ test/images
 test/*.html
 /test/.cabal-sandbox
 .stack-work/
+stack.yaml.lock
