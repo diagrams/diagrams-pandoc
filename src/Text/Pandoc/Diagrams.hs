@@ -27,6 +27,7 @@ import           System.Directory                (createDirectoryIfMissing)
 import           System.FilePath                 (pathSeparator, (<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
+import Data.Maybe (maybeToList)
 
 backendExt :: Opts -> String
 backendExt Opts {_backend = SVG, ..} = "svg"
@@ -56,17 +57,17 @@ data Echo = Above | Below
 insertDiagrams :: Opts -> Block -> IO [Block]
 insertDiagrams opts@Opts{..} (CodeBlock (ident, classes, attrs) code)
     | "diagram-haskell" `elem` classes = do
-      i <- img
+      i <- maybeToList <$> img
       return $ case echo of
-        Above -> [bl', i]
-        Below -> [i, bl']
-    | "diagram" `elem` classes = (:[]) <$> img
+        Above -> bl' : i
+        Below -> i <> [bl']
+    | "diagram" `elem` classes = maybeToList <$> img
   where
     img = do
         d <- compileDiagram opts attrs code
         return $ case d of
-            Left _err     -> Null  -- TODO log an error here
-            Right imgName -> Plain
+            Left _err     -> Nothing  -- TODO log an error here
+            Right imgName -> Just $ Para
               [Image ("",[],[]) []
                  (if _absolutePath then T.cons pathSeparator imgName else imgName,"")
               ] -- no alt text, no title

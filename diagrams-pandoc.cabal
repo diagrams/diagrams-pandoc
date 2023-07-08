@@ -23,8 +23,8 @@ Source-repository head
 
 library
   build-depends:       base >= 4.6 && < 4.18,
-                       text >= 1.2 && < 1.3,
-                       pandoc-types >= 1.20 && < 1.23,
+                       text >= 1.2 && < 2.1,
+                       pandoc-types >= 1.20 && < 1.24,
                        diagrams-lib >= 1.3 && < 1.5,
                        linear >= 1.10 && < 1.23,
                        diagrams-builder >= 0.7 && < 0.9,
@@ -44,8 +44,8 @@ executable diagrams-pandoc
   main-is:             src/Main.hs
   other-extensions:    CPP
   build-depends:       base >= 4.6 && < 4.18,
-                       text >= 1.2 && < 1.3,
-                       pandoc-types >= 1.20 && < 1.23,
+                       text >= 1.2 && < 2.1,
+                       pandoc-types >= 1.20 && < 1.24,
                        diagrams-lib >= 1.3 && < 1.5,
                        linear >= 1.10 && < 1.23,
                        diagrams-builder >= 0.7 && < 0.9,
