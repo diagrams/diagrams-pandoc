@@ -30,7 +30,7 @@ import           Text.Pandoc.Definition
 import Data.Maybe (maybeToList)
 
 backendExt :: Opts -> String
-backendExt Opts {_backend = SVG, ..} = "svg"
+backendExt Opts {_backend = SVG } = "svg"
 backendExt Opts {_backend = Cairo, ..} = case _outFormat of
   "beamer" -> "pdf"
   "latex"  -> "pdf"
