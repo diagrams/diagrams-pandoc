@@ -10,6 +10,7 @@ cabal-dev
 *~
 .hsenv_*
 dist_*
+dist-newstyle/
 history
 TAGS
 .diagrams-cache
