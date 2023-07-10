@@ -1,5 +1,5 @@
 name:                diagrams-pandoc
-version:             0.3.1
+version:             0.3.1.1
 synopsis:            A Pandoc filter to express diagrams inline using the Haskell EDSL _Diagrams_
 description: 'diagrams-pandoc' replaces appropriately marked code
     blocks in pandoc input with images.  The code blocks are compiled
