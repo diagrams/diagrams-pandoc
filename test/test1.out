@@ -1,0 +1,14 @@
+[ Para
+    [ Str "Here"
+    , Space
+    , Str "is"
+    , Space
+    , Str "a"
+    , Space
+    , Str "square:"
+    ]
+, Plain
+    [ Image
+        ( "" , [] , [] ) [] ( "images/3895b48f2a2f113a.png" , "" )
+    ]
+]

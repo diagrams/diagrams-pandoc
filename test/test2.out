@@ -1,0 +1,17 @@
+[ Para
+    [ Str "Here"
+    , Space
+    , Str "is"
+    , Space
+    , Str "a"
+    , Space
+    , Str "square:"
+    ]
+, CodeBlock
+    ( "" , [ "haskell" ] , [ ( "echo" , "Above" ) ] )
+    "example = square 1"
+, Plain
+    [ Image
+        ( "" , [] , [] ) [] ( "images/3895b48f2a2f113a.png" , "" )
+    ]
+]
