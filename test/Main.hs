@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import Test.Tasty (TestTree)
@@ -42,6 +44,13 @@ defaultOpts = Opts
 diagramsFilter :: Pandoc.Pandoc -> IO Pandoc.Pandoc
 diagramsFilter = Pandoc.walkM (fmap concat . mapM (insertDiagrams defaultOpts))
 
+-- We are renaming the image files so that the file names would be deterministic
+-- across environments, GHC versions, etc. We are interested in the actual
+-- generated image anyway.
+renameImageHash ::  Pandoc.Inline -> Pandoc.Inline
+renameImageHash (Pandoc.Image attr alt (_, title)) = Pandoc.Image attr alt ("image.png", title)
+renameImageHash x = x
+
 mdToHtml :: String -> IO Text
 mdToHtml f = do
   mdContents <- T.readFile f
@@ -51,7 +60,8 @@ mdToHtml f = do
     -- (backtick_code_blocks, fenced_code_attributes, etc.)
     ast <- Pandoc.readMarkdown (def { readerExtensions = pandocExtensions }) mdContents
     filteredAst <- liftIO $ diagramsFilter ast
-    Pandoc.writeHtml5String (def { writerExtensions = pandocExtensions }) filteredAst
+    let renamedAst = Pandoc.walk renameImageHash filteredAst
+    Pandoc.writeHtml5String (def { writerExtensions = pandocExtensions }) renamedAst
 
 goldenTests :: IO TestTree
 goldenTests = do
