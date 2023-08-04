@@ -15,7 +15,7 @@ maintainer:          diagrams-discuss@googlegroups.com
 category:            Text
 build-type:          Simple
 Bug-reports:         http://github.com/diagrams/diagrams-pandoc/issues
-Extra-source-files:  README.md, CHANGELOG.md
+Extra-source-files:  README.md, CHANGELOG.md, test/*.md, test/*.html
 Tested-with:         GHC ==8.8.4 || ==8.10.7 || ==9.0.2 || ==9.2.7 || ==9.4.5 || ==9.6.1
 Source-repository head
   type:     git
