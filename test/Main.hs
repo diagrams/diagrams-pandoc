@@ -42,8 +42,8 @@ defaultOpts = Opts
 diagramsFilter :: Pandoc.Pandoc -> IO Pandoc.Pandoc
 diagramsFilter = Pandoc.walkM (fmap concat . mapM (insertDiagrams defaultOpts))
 
-mdToNative :: String -> IO Text
-mdToNative f = do
+mdToHtml :: String -> IO Text
+mdToHtml f = do
   mdContents <- T.readFile f
   Pandoc.runIOorExplode $ do
     -- Pandoc extensions that are enabled by default in Pandoc CLI are also
@@ -51,7 +51,7 @@ mdToNative f = do
     -- (backtick_code_blocks, fenced_code_attributes, etc.)
     ast <- Pandoc.readMarkdown (def { readerExtensions = pandocExtensions }) mdContents
     filteredAst <- liftIO $ diagramsFilter ast
-    Pandoc.writeNative (def { writerExtensions = pandocExtensions }) filteredAst
+    Pandoc.writeHtml5String (def { writerExtensions = pandocExtensions }) filteredAst
 
 goldenTests :: IO TestTree
 goldenTests = do
@@ -59,8 +59,8 @@ goldenTests = do
   pure $ Tasty.testGroup "golden tests"
     [ Tasty.goldenVsString
         (takeBaseName mdFile)
-        nativeFile
-        (LBS.fromStrict . T.encodeUtf8 <$> mdToNative mdFile)
+        htmlFile
+        (LBS.fromStrict . T.encodeUtf8 <$> mdToHtml mdFile)
     | mdFile <- mdFiles
-    , let nativeFile = replaceExtension mdFile ".out"
+    , let htmlFile = replaceExtension mdFile ".html"
     ]
