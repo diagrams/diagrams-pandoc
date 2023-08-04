@@ -7,8 +7,8 @@
     , Space
     , Str "square:"
     ]
-, Plain
+, Para
     [ Image
-        ( "" , [] , [] ) [] ( "images/3895b48f2a2f113a.png" , "" )
+        ( "" , [] , [] ) [] ( "images/4bcef48f2a2f113a.png" , "" )
     ]
 ]

@@ -10,7 +10,7 @@
 , CodeBlock
     ( "" , [ "haskell" ] , [ ( "echo" , "Above" ) ] )
     "example = square 1"
-, Plain
+, Para
     [ Image
         ( "" , [] , [] ) [] ( "images/3895b48f2a2f113a.png" , "" )
     ]
