@@ -1,0 +1,7 @@
+packages: .
+
+package *
+  test-show-details: direct
+
+-- test sandbox dependencies are obtained from the environment files
+write-ghc-environment-files: always
