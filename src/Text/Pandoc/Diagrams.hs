@@ -25,9 +25,14 @@ import qualified Graphics.Svg                    as Svg
 import           Linear                          (V2 (..), zero)
 import           System.Directory                (createDirectoryIfMissing)
 import           System.FilePath                 (pathSeparator, (<.>), (</>))
-import           System.IO
-import           Text.Pandoc.Definition
+import           System.IO                       (hFlush, hPutStr, hPutStrLn, stderr)
+import           Text.Pandoc.Definition          (Block(..), Caption, Attr)
 import qualified Text.Pandoc.Builder as PB
+import qualified Text.Pandoc as Pandoc
+import qualified Text.Pandoc.Shared as Pandoc
+import           Text.Pandoc.Options             (def, readerExtensions, pandocExtensions)
+import           Data.Maybe                      (fromMaybe)
+import           Data.Foldable                   (fold)
 
 backendExt :: Opts -> String
 backendExt Opts {_backend = SVG } = "svg"
@@ -65,27 +70,48 @@ insertDiagrams opts@Opts{..} (CodeBlock (ident, classes, attrs) code)
   where
     img = do
       d <- compileDiagram opts attrs code
-      return $ case d of
-        Left _err     -> mempty  -- TODO log an error here
-        Right imgName -> case caption of
-          Just caption' ->
-            PB.simpleFigureWith
+      case d of
+        Left _err     -> pure mempty  -- TODO log an error here
+        Right imgName -> case captionRaw of
+          Just captionRaw' -> do
+            captionBlocks <- parseCaption captionRaw'
+            let caption = blocksToCaption captionBlocks
+                alt = fromMaybe (blocksToAlt captionBlocks) altAttr
+            pure $ figureWithCaption
               -- transfer identifier from code block to figure, so that
               -- it can be referenced by `pandoc-crossref` and the like.
               (ident, [], [])
-              (PB.text caption')
+              caption
               (if _absolutePath then T.cons pathSeparator imgName else imgName)
               ""
+              alt
           Nothing ->
-            PB.plain $ PB.imageWith
+            pure $ PB.plain $ PB.imageWith
               (ident, [], [])
               (if _absolutePath then T.cons pathSeparator imgName else imgName)
               ""
-              mempty
+              (fold altAttr)
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
-    caption = lookup "caption" attrs
+    captionRaw = lookup "caption" attrs
+    altAttr = PB.str <$> lookup "alt" attrs
 insertDiagrams _ block = return [block]
+
+figureWithCaption :: Attr -> Caption -> Text -> Text -> PB.Inlines -> PB.Blocks
+figureWithCaption attr caption url title alt =
+  PB.figure caption . PB.plain $ PB.imageWith attr url title alt
+
+blocksToCaption :: [Block] -> Caption
+blocksToCaption = PB.simpleCaption . PB.fromList
+
+blocksToAlt :: [Block] -> PB.Inlines
+blocksToAlt = Pandoc.blocksToInlines'
+
+parseCaption :: Text -> IO [Block]
+parseCaption s = Pandoc.runIOorExplode $ do
+  (Pandoc.Pandoc _ blks) <-
+    Pandoc.readMarkdown (def { readerExtensions = pandocExtensions }) s
+  pure blks
 
 -- Copied from https://github.com/diagrams/diagrams-doc/blob/master/doc/Xml2Html.hs
 -- With the CPP removed, thereby requiring Cairo
