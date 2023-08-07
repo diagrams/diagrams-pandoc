@@ -27,7 +27,7 @@ import           System.Directory                (createDirectoryIfMissing)
 import           System.FilePath                 (pathSeparator, (<.>), (</>))
 import           System.IO
 import           Text.Pandoc.Definition
-import Data.Maybe (maybeToList)
+import qualified Text.Pandoc.Builder as PB
 
 backendExt :: Opts -> String
 backendExt Opts {_backend = SVG } = "svg"
@@ -57,22 +57,34 @@ data Echo = Above | Below
 insertDiagrams :: Opts -> Block -> IO [Block]
 insertDiagrams opts@Opts{..} (CodeBlock (ident, classes, attrs) code)
     | "diagram-haskell" `elem` classes = do
-      i <- maybeToList <$> img
+      i <- PB.toList <$> img
       return $ case echo of
         Above -> bl' : i
         Below -> i <> [bl']
-    | "diagram" `elem` classes = maybeToList <$> img
+    | "diagram" `elem` classes = PB.toList <$> img
   where
     img = do
-        d <- compileDiagram opts attrs code
-        return $ case d of
-            Left _err     -> Nothing  -- TODO log an error here
-            Right imgName -> Just $ Para
-              [Image ("",[],[]) []
-                 (if _absolutePath then T.cons pathSeparator imgName else imgName,"")
-              ] -- no alt text, no title
+      d <- compileDiagram opts attrs code
+      return $ case d of
+        Left _err     -> mempty  -- TODO log an error here
+        Right imgName -> case caption of
+          Just caption' ->
+            PB.simpleFigureWith
+              -- transfer identifier from code block to figure, so that
+              -- it can be referenced by `pandoc-crossref` and the like.
+              (ident, [], [])
+              (PB.text caption')
+              (if _absolutePath then T.cons pathSeparator imgName else imgName)
+              ""
+          Nothing ->
+            PB.plain $ PB.imageWith
+              (ident, [], [])
+              (if _absolutePath then T.cons pathSeparator imgName else imgName)
+              ""
+              mempty
     bl' = CodeBlock (ident, "haskell":delete "diagram-haskell" classes, attrs) code
     echo = readEcho attrs
+    caption = lookup "caption" attrs
 insertDiagrams _ block = return [block]
 
 -- Copied from https://github.com/diagrams/diagrams-doc/blob/master/doc/Xml2Html.hs
