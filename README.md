@@ -28,15 +28,19 @@ The file demo.html should now have an img tag pointing at a PNG of a circle.
 You can specify attributes to control how the diagram is generated.
 The following, for example,
 ``` markdown
-    ~~~ {.diagram width=800 height=400}
+    ~~~ {.diagram width=800 height=400 caption="A circle"}
     example = circle 1
     ~~~
 ```
-will override the default width and height of the generated diagram.
-The following attributes are supported:
+will override the default width and height of the generated diagram, and
+provide a caption for it. The following attributes are supported:
 
 * `width`: The width of the generated diagram, in pixels. The default is 500.
 * `height`: The height of the generated diagram, in pixels. The default is 200.
+* `caption`: The caption of the diagram. Providing a caption makes the diagram
+appear as a figure, rather than an inline image. Diagrams have no caption by default.
+* `alt`: The alt text of the diagram. The caption is used as the default value
+if it is provided, otherwise it is empty.
 
 ## Details
 
