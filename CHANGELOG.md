@@ -1,3 +1,10 @@
+## v0.4 (2024-02-29)
+
+  - New support for figures ([#23](https://github.com/diagrams/diagrams-pandoc/pull/23); thanks to Berk Özkütük)
+  - New test suite ([#22](https://github.com/diagrams/diagrams-pandoc/pull/22); thanks to Berk Özkütük)
+  - Allow `base-4.19`, `text-2.1`, `tasty-1.5`
+  - Test on GHC 9.8
+
 ## v0.3.1.1 (2023-07-10)
 
   - Update upper bounds to allow:
