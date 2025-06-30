@@ -1,3 +1,17 @@
+## v0.4.1 (2025-06-30)
+
+- Allow:
+  - `base-4.20` (GHC 9.10) and `base-4.21` (GHC 9.12)
+  - `filepath-1.5`
+  - `linear-1.23`
+  - `hashable-1.5`
+  - `optparse-applicative-0.19`
+  - `pandoc` up through 3.7
+  - `diagrams-lib-1.5`
+  - `diagrams-cairo-1.5`
+  - `diagrams-svg-1.5`
+- Drop support for GHC < 9.2
+
 ## v0.4 (2024-02-29)
 
   - New support for figures ([#23](https://github.com/diagrams/diagrams-pandoc/pull/23); thanks to Berk Özkütük)
